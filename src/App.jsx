@@ -673,6 +673,7 @@ function SearchBar({ value, onChange, t }) {
 // ─── Word List Browser ──────────────────────────────────────────────────────
 const ALL_LETTERS = [...new Set(ALL_WORDS.map(w => w.word[0].toUpperCase()))].sort((a, b) => a.localeCompare(b, "es"));
 const CAT_ENTRIES = Object.entries(CATEGORIES);
+const stripAccents = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords }) {
   const [search, setSearch] = useState("");
@@ -682,15 +683,15 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
 
   const filtered = useMemo(() => {
     let words = ALL_WORDS;
-    if (search.length >= 2) {
-      const q = search.toLowerCase();
+    if (search.length >= 1) {
+      const q = stripAccents(search);
       words = words.filter(w =>
-        w.word.toLowerCase().includes(q) ||
-        w.en.toLowerCase().includes(q) ||
-        (w.es && w.es.toLowerCase().includes(q))
+        stripAccents(w.word).includes(q) ||
+        stripAccents(w.en).includes(q) ||
+        (w.es && stripAccents(w.es).includes(q))
       );
     }
-    if (activeLetter) words = words.filter(w => w.word[0].toUpperCase() === activeLetter);
+    if (activeLetter) words = words.filter(w => stripAccents(w.word[0]).toUpperCase() === stripAccents(activeLetter).toUpperCase());
     if (activeCategory) {
       const fn = CATEGORIES[activeCategory]?.filter;
       if (fn) words = words.filter(fn);
@@ -751,7 +752,7 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
 
       {/* Word List */}
       {filtered.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", borderRadius: 12, border: `1px solid ${t.border}`, background: t.card, maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", borderRadius: 12, border: `1px solid ${t.border}`, background: t.card, maxHeight: "60vh", overflowY: "auto" }}>
           {filtered.map((w, i) => {
             const stats = getWordStats(w.word);
             const dotColor = stats.mastered ? "#10b981" : stats.total > 0 ? "#f59e0b" : t.border;
