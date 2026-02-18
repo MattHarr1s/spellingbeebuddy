@@ -670,6 +670,113 @@ function SearchBar({ value, onChange, t }) {
   );
 }
 
+// ─── Word List Browser ──────────────────────────────────────────────────────
+const ALL_LETTERS = [...new Set(ALL_WORDS.map(w => w.word[0].toUpperCase()))].sort((a, b) => a.localeCompare(b, "es"));
+const CAT_ENTRIES = Object.entries(CATEGORIES);
+
+function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords }) {
+  const [search, setSearch] = useState("");
+  const [activeLetter, setActiveLetter] = useState(null);
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [quickFilter, setQuickFilter] = useState(null);
+
+  const filtered = useMemo(() => {
+    let words = ALL_WORDS;
+    if (search.length >= 2) {
+      const q = search.toLowerCase();
+      words = words.filter(w =>
+        w.word.toLowerCase().includes(q) ||
+        w.en.toLowerCase().includes(q) ||
+        (w.es && w.es.toLowerCase().includes(q))
+      );
+    }
+    if (activeLetter) words = words.filter(w => w.word[0].toUpperCase() === activeLetter);
+    if (activeCategory) {
+      const fn = CATEGORIES[activeCategory]?.filter;
+      if (fn) words = words.filter(fn);
+    }
+    if (quickFilter === "favorites") words = words.filter(w => isFavorite(w.word));
+    else if (quickFilter === "mastered") words = words.filter(w => getWordStats(w.word).mastered);
+    else if (quickFilter === "not-practiced") words = words.filter(w => getWordStats(w.word).total === 0);
+    return words;
+  }, [search, activeLetter, activeCategory, quickFilter, isFavorite, getWordStats]);
+
+  const handleWordClick = (w) => {
+    const reordered = [w, ...filtered.filter(fw => fw.word !== w.word)];
+    onStudyWords(reordered);
+  };
+
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+      <ModeTopBar onBack={onBack} backLabel="Menu" speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} t={t} />
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 12, textAlign: "center" }}>📖 Word List</h2>
+
+      {/* Search */}
+      <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="🔍 Search words, definitions..."
+        style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1px solid ${t.border}`, fontSize: 14, outline: "none", boxSizing: "border-box", background: t.surface, color: t.text, marginBottom: 10 }} />
+
+      {/* Letter Strip */}
+      <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 6, marginBottom: 10, WebkitOverflowScrolling: "touch" }}>
+        {ALL_LETTERS.map(l => (
+          <button key={l} onClick={() => setActiveLetter(activeLetter === l ? null : l)}
+            style={{ width: 32, height: 32, borderRadius: "50%", border: activeLetter === l ? "2px solid #3498db" : `1px solid ${t.border}`, background: activeLetter === l ? "#3498db" : t.surface, color: activeLetter === l ? "white" : t.text, cursor: "pointer", fontSize: 13, fontWeight: 600, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Category Chips */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 10, WebkitOverflowScrolling: "touch" }}>
+        {CAT_ENTRIES.map(([name, data]) => (
+          <button key={name} onClick={() => setActiveCategory(activeCategory === name ? null : name)}
+            style={{ padding: "5px 10px", borderRadius: 16, border: activeCategory === name ? `2px solid ${data.color}` : `1px solid ${t.border}`, background: activeCategory === name ? data.color + "20" : t.surface, color: activeCategory === name ? data.color : t.textMuted, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap", flexShrink: 0, fontWeight: activeCategory === name ? 600 : 400 }}>
+            {data.icon} {name}
+          </button>
+        ))}
+      </div>
+
+      {/* Quick Filters */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {[{ key: "favorites", label: "⭐ Favorites", color: "#f59e0b" }, { key: "mastered", label: "✅ Mastered", color: "#10b981" }, { key: "not-practiced", label: "🆕 Not practiced", color: "#6366f1" }].map(f => (
+          <button key={f.key} onClick={() => setQuickFilter(quickFilter === f.key ? null : f.key)}
+            style={{ padding: "5px 10px", borderRadius: 16, border: quickFilter === f.key ? `2px solid ${f.color}` : `1px solid ${t.border}`, background: quickFilter === f.key ? f.color + "20" : t.surface, color: quickFilter === f.key ? f.color : t.textMuted, cursor: "pointer", fontSize: 12, fontWeight: quickFilter === f.key ? 600 : 400 }}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Results Count */}
+      <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>Showing {filtered.length} of {ALL_WORDS.length} words</p>
+
+      {/* Word List */}
+      {filtered.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", borderRadius: 12, border: `1px solid ${t.border}`, background: t.card, maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
+          {filtered.map((w, i) => {
+            const stats = getWordStats(w.word);
+            const dotColor = stats.mastered ? "#10b981" : stats.total > 0 ? "#f59e0b" : t.border;
+            return (
+              <button key={w.word} onClick={() => handleWordClick(w)}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", borderBottom: i < filtered.length - 1 ? `1px solid ${t.border}` : "none", cursor: "pointer", textAlign: "left", width: "100%" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0 }} title={stats.mastered ? "Mastered" : stats.total > 0 ? "Practiced" : "Not practiced"} />
+                <span style={{ fontWeight: 600, color: t.text, fontSize: 15, fontFamily: "Georgia, serif", flexShrink: 0 }}>{w.word}</span>
+                <span style={{ color: t.textMuted, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{w.en}</span>
+                <FavButton word={w.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: t.textMuted }}>
+          <p style={{ fontSize: 32, marginBottom: 8 }}>🔍</p>
+          <p style={{ fontSize: 15 }}>No words match your filters</p>
+          <p style={{ fontSize: 13, marginTop: 4 }}>Try adjusting your search or removing filters</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [mode, setMode] = useState("menu");
@@ -682,7 +789,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const { speak, ready } = useSpanishVoice();
   const { isDark, toggleDark } = useDarkMode();
-  const { recordResult, getCategoryStats, getMasteredCount } = useProgress();
+  const { recordResult, getWordStats, getCategoryStats, getMasteredCount } = useProgress();
   const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const t = isDark ? DARK_THEME : LIGHT_THEME;
 
@@ -691,6 +798,7 @@ export default function App() {
   }, [speed]);
 
   const [searchStudyWords, setSearchStudyWords] = useState(null);
+  const [wordlistStudyWords, setWordlistStudyWords] = useState(null);
 
   const filteredWords = useMemo(() => {
     if (!search || search.length < 2) return [];
@@ -763,6 +871,16 @@ export default function App() {
       <StudyMode words={searchStudyWords} category="Search Results" catColor="#6366f1" onBack={() => { goBack(); }} {...sharedProps} />
     );
   }
+  if (mode === "wordlist") {
+    return wrapper(
+      <WordListMode onBack={() => goBack()} speed={speed} setSpeed={setSpeed} speak={speak} t={t} isDark={isDark} toggleDark={toggleDark} isFavorite={isFavorite} toggleFavorite={toggleFavorite} getWordStats={getWordStats} onStudyWords={(words) => { setWordlistStudyWords(words); setMode("study-wordlist"); }} />
+    );
+  }
+  if (mode === "study-wordlist" && wordlistStudyWords) {
+    return wrapper(
+      <StudyMode words={wordlistStudyWords} category="Word List" catColor="#6366f1" onBack={() => setMode("wordlist")} {...sharedProps} />
+    );
+  }
   if (mode === "quiz") return wrapper(<QuizMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
   if (mode === "spell") return wrapper(<SpellMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
   if (mode === "listen") return wrapper(<ListenMode key={modeKey} onBack={goBack} wordPool={customWordPool} ready={ready} {...sharedProps} />);
@@ -802,6 +920,11 @@ export default function App() {
           style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>🎯 Multiple Choice</button>
         <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("spell"); }}
           style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>⌨️ Type with Hints</button>
+        <button onClick={() => setMode("wordlist")}
+          style={{ flex: "1 1 100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
+          📖 Word List
+          <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.textMuted, marginTop: 2 }}>Browse, filter, and search all {ALL_WORDS.length} words</span>
+        </button>
       </div>
 
       {/* Favorites Section */}
