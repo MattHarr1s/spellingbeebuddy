@@ -4,6 +4,7 @@ import { useProgress } from "./hooks/useProgress.js";
 import { useFavorites } from "./hooks/useFavorites.js";
 import { useDarkMode, DARK_THEME, LIGHT_THEME } from "./hooks/useDarkMode.js";
 import { useKeyboard } from "./hooks/useKeyboard.js";
+import { useLocale } from "./hooks/useLocale.js";
 
 // ─── Category Configuration ─────────────────────────────────────────────────
 const CATEGORIES = {
@@ -285,8 +286,8 @@ function useSpanishVoice() {
 }
 
 // ─── Shared Components ──────────────────────────────────────────────────────
-function SpeedControl({ speed, setSpeed, t, compact }) {
-  const labels = { 0.4: "Very Slow", 0.6: "Slow", 0.8: "Normal", 1.0: "Fast", 1.2: "Faster" };
+function SpeedControl({ speed, setSpeed, t, compact, s }) {
+  const labels = s ? s.speedLabels : { 0.4: "Very Slow", 0.6: "Slow", 0.8: "Normal", 1.0: "Fast", 1.2: "Faster" };
   const closest = Object.keys(labels).reduce((a, b) => Math.abs(b - speed) < Math.abs(a - speed) ? b : a);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: compact ? 4 : 8, padding: compact ? "4px 8px" : "6px 12px", background: t.surface, borderRadius: 10, border: `1px solid ${t.border}` }}>
@@ -300,33 +301,33 @@ function SpeedControl({ speed, setSpeed, t, compact }) {
   );
 }
 
-function SpeakButton({ word, speak, speed, label, t }) {
+function SpeakButton({ word, speak, speed, label, t, s }) {
   const [animating, setAnimating] = useState(false);
   const handleClick = () => { setAnimating(true); speak(word, speed); setTimeout(() => setAnimating(false), 800); };
   return (
     <button onClick={handleClick}
       style={{ padding: "6px 14px", borderRadius: 20, border: `1px solid ${t.border}`, background: animating ? (t.bg === DARK_THEME.bg ? "#1e3a5f" : "#eff6ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.2s" }}
-      title="Listen to the word">🔊 {label || "Listen"}</button>
+      title={s ? s.listen : "Listen"}>🔊 {label || (s ? s.listen : "Listen")}</button>
   );
 }
 
-function FavButton({ word, isFavorite, toggleFavorite }) {
+function FavButton({ word, isFavorite, toggleFavorite, s }) {
   const fav = isFavorite(word);
   return (
     <button onClick={(e) => { e.stopPropagation(); toggleFavorite(word); }}
       style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: "2px 4px", opacity: fav ? 1 : 0.4, transition: "opacity 0.2s", filter: fav ? "none" : "grayscale(1)" }}
-      title={fav ? "Remove from favorites" : "Add to favorites"}>⭐</button>
+      title={fav ? (s ? s.removeFromFavorites : "Remove from favorites") : (s ? s.addToFavorites : "Add to favorites")}>⭐</button>
   );
 }
 
-function VoiceMicButton({ voice, onLetter, disabled, t }) {
+function VoiceMicButton({ voice, onLetter, disabled, t, s }) {
   if (!voice.supported) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
       <button onClick={() => { if (!disabled) voice.toggle(onLetter); }}
         disabled={disabled}
         style={{ width: 44, height: 44, borderRadius: "50%", border: voice.listening ? "2px solid #ef4444" : `2px solid ${t.border}`, background: voice.listening ? (t.bg === DARK_THEME.bg ? "#451a1a" : "#fef2f2") : t.surface, color: voice.listening ? "#ef4444" : t.textMuted, cursor: disabled ? "default" : "pointer", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: disabled ? 0.4 : 1, transition: "all 0.2s", boxShadow: voice.listening ? "0 0 0 4px rgba(239,68,68,0.2)" : "none", flexShrink: 0 }}
-        title={voice.listening ? "Stop voice input" : "Spell by voice"}>
+        title={voice.listening ? (s ? s.stopVoice : "Stop voice input") : (s ? s.spellByVoice : "Spell by voice")}>
         {voice.listening ? "⏹" : "🎙"}
       </button>
       {voice.listening && voice.lastHeard && (
@@ -336,7 +337,7 @@ function VoiceMicButton({ voice, onLetter, disabled, t }) {
       )}
       {voice.ambiguity && (
         <div style={{ display: "flex", gap: 4, alignItems: "center", padding: "4px 10px", background: "#fef3c7", borderRadius: 10 }}>
-          <span style={{ fontSize: 12, color: "#92400e" }}>Which?</span>
+          <span style={{ fontSize: 12, color: "#92400e" }}>{s ? s.which : "Which?"}</span>
           {voice.ambiguity.map(l => (
             <button key={l} onClick={() => voice.resolveAmbiguity(l)}
               style={{ padding: "3px 12px", borderRadius: 8, border: "1px solid #f59e0b", background: "white", cursor: "pointer", fontSize: 15, fontWeight: 700, fontFamily: "Georgia, serif" }}>{l}</button>
@@ -349,26 +350,26 @@ function VoiceMicButton({ voice, onLetter, disabled, t }) {
 
 const KOFI_URL = "https://ko-fi.com/YOURUSERNAME"; // TODO: Replace with your Ko-fi URL
 
-function SupportBanner({ t, compact }) {
+function SupportBanner({ t, compact, s }) {
   return (
     <div style={{ textAlign: "center", padding: compact ? "12px 8px" : "16px 12px", marginTop: compact ? 12 : 20, borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface }}>
-      {!compact && <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>Enjoying this app? Help keep it free!</p>}
+      {!compact && <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>{s ? s.enjoyingApp : "Enjoying this app? Help keep it free!"}</p>}
       <a href={KOFI_URL} target="_blank" rel="noopener noreferrer"
         style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 10, border: "none", background: "#FF5E5B", color: "white", cursor: "pointer", fontSize: 14, fontWeight: 600, textDecoration: "none", transition: "opacity 0.2s" }}
         onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-        ☕ Support on Ko-fi
+        ☕ {s ? s.supportKofi : "Support on Ko-fi"}
       </a>
     </div>
   );
 }
 
-function AdSlot({ t }) {
+function AdSlot({ t, s }) {
   return (
     <div style={{ textAlign: "center", padding: "16px 12px", marginTop: 16, borderRadius: 12, border: `1px dashed ${t.border}`, background: t.surface, minHeight: 90 }}>
       {/* Google AdSense ad unit goes here. Replace this placeholder with your ad code:
           <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXX" data-ad-slot="XXXXXXX" data-ad-format="auto" data-full-width-responsive="true"></ins>
           <script>(adsbygoogle = window.adsbygoogle || []).push({});</script> */}
-      <p style={{ fontSize: 12, color: t.textMuted }}>Ad space</p>
+      <p style={{ fontSize: 12, color: t.textMuted }}>{s ? s.adSpace : "Ad space"}</p>
     </div>
   );
 }
@@ -384,15 +385,15 @@ function AccentToolbar({ onChar, inputRef, t }) {
   );
 }
 
-function DefinitionDisplay({ word, t }) {
+function DefinitionDisplay({ word, t, s }) {
   const [lang, setLang] = useState("en");
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 6 }}>
         <button onClick={() => setLang("en")}
-          style={{ padding: "3px 10px", borderRadius: 12, border: lang === "en" ? "2px solid #3498db" : `1px solid ${t.border}`, background: lang === "en" ? (t.bg === DARK_THEME.bg ? "#1e3a5f" : "#eff6ff") : t.surface, color: t.text, fontSize: 12, cursor: "pointer", fontWeight: lang === "en" ? 600 : 400 }}>English</button>
+          style={{ padding: "3px 10px", borderRadius: 12, border: lang === "en" ? "2px solid #3498db" : `1px solid ${t.border}`, background: lang === "en" ? (t.bg === DARK_THEME.bg ? "#1e3a5f" : "#eff6ff") : t.surface, color: t.text, fontSize: 12, cursor: "pointer", fontWeight: lang === "en" ? 600 : 400 }}>{s ? s.english : "English"}</button>
         <button onClick={() => setLang("es")}
-          style={{ padding: "3px 10px", borderRadius: 12, border: lang === "es" ? "2px solid #e67e22" : `1px solid ${t.border}`, background: lang === "es" ? (t.bg === DARK_THEME.bg ? "#3d2a14" : "#fff7ed") : t.surface, color: t.text, fontSize: 12, cursor: "pointer", fontWeight: lang === "es" ? 600 : 400 }}>Español</button>
+          style={{ padding: "3px 10px", borderRadius: 12, border: lang === "es" ? "2px solid #e67e22" : `1px solid ${t.border}`, background: lang === "es" ? (t.bg === DARK_THEME.bg ? "#3d2a14" : "#fff7ed") : t.surface, color: t.text, fontSize: 12, cursor: "pointer", fontWeight: lang === "es" ? 600 : 400 }}>{s ? s.spanish : "Español"}</button>
       </div>
       <p style={{ color: t.textMuted, fontSize: 15, fontStyle: "italic" }}>
         {lang === "en" ? word.en : (word.es || word.en)}
@@ -401,28 +402,39 @@ function DefinitionDisplay({ word, t }) {
   );
 }
 
-function DarkModeToggle({ isDark, toggleDark }) {
+function DarkModeToggle({ isDark, toggleDark, s }) {
   return (
     <button onClick={toggleDark}
       style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "4px 8px", borderRadius: 8, transition: "all 0.2s" }}
-      title={isDark ? "Switch to light mode" : "Switch to dark mode"}>{isDark ? "☀️" : "🌙"}</button>
+      title={isDark ? (s ? s.switchToLight : "Switch to light mode") : (s ? s.switchToDark : "Switch to dark mode")}>{isDark ? "☀️" : "🌙"}</button>
   );
 }
 
-function ModeTopBar({ onBack, backLabel, speed, setSpeed, isDark, toggleDark, t }) {
+function LocaleToggle({ locale, toggleLocale }) {
+  return (
+    <button onClick={toggleLocale}
+      style={{ background: "none", border: "none", fontSize: 14, cursor: "pointer", padding: "4px 8px", borderRadius: 8, transition: "all 0.2s" }}
+      title={locale === "en" ? "Cambiar a español" : "Switch to English"}>
+      {locale === "es" ? "🇺🇸 EN" : "🇲🇽 ES"}
+    </button>
+  );
+}
+
+function ModeTopBar({ onBack, backLabel, speed, setSpeed, isDark, toggleDark, locale, toggleLocale, t, s }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 6 }}>
-      <button onClick={onBack} style={{ background: "none", border: "none", color: t.textMuted, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap", padding: "4px 0", flexShrink: 0 }}>← {backLabel || "Back"}</button>
+      <button onClick={onBack} style={{ background: "none", border: "none", color: t.textMuted, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap", padding: "4px 0", flexShrink: 0 }}>← {backLabel || (s ? s.back : "Back")}</button>
       <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <SpeedControl speed={speed} setSpeed={setSpeed} t={t} compact />
-        <DarkModeToggle isDark={isDark} toggleDark={toggleDark} />
+        <SpeedControl speed={speed} setSpeed={setSpeed} t={t} compact s={s} />
+        {locale && toggleLocale && <LocaleToggle locale={locale} toggleLocale={toggleLocale} />}
+        <DarkModeToggle isDark={isDark} toggleDark={toggleDark} s={s} />
       </div>
     </div>
   );
 }
 
 // ─── Study Mode (Flashcards) ────────────────────────────────────────────────
-function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite }) {
+function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, s, locale, toggleLocale }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showTip, setShowTip] = useState(false);
   const [showDef, setShowDef] = useState(false);
@@ -471,14 +483,14 @@ function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, 
   }), [currentIndex, words.length, word, speed, speak, toggleWord, onBack]);
   useKeyboard(shortcuts);
 
-  if (!word) return <p style={{ color: t.text }}>No words in this category.</p>;
+  if (!word) return <p style={{ color: t.text }}>{s ? s.noWordsInCategory : "No words in this category."}</p>;
   return (
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel="Categories" speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} t={t} />
+      <ModeTopBar onBack={onBack} backLabel={s ? s.categories : "Categories"} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: catColor || "#3498db", height: 6, borderRadius: 8, width: `${progress}%`, transition: "width 0.3s" }} />
       </div>
-      <p style={{ color: t.textMuted, fontSize: 14, textAlign: "center", marginBottom: 8 }}>{currentIndex + 1} of {words.length}</p>
+      <p style={{ color: t.textMuted, fontSize: 14, textAlign: "center", marginBottom: 8 }}>{s ? s.nOfM(currentIndex + 1, words.length) : `${currentIndex + 1} of ${words.length}`}</p>
 
       <div style={{ perspective: 800, marginBottom: 16 }}>
         <div style={{
@@ -486,8 +498,8 @@ function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, 
           transform: flipping ? "rotateY(90deg)" : "rotateY(0deg)", transition: "transform 0.3s ease-in-out", transformStyle: "preserve-3d",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: catColor || "#888", fontWeight: 600 }}>{category}</p>
-            <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+            <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: catColor || "#888", fontWeight: 600 }}>{s && s.cat[category] ? s.cat[category] : category}</p>
+            <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
           </div>
 
           {showWord ? (
@@ -495,18 +507,18 @@ function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, 
           ) : (
             <div style={{ marginBottom: 12 }}>
               <p style={{ fontSize: 36, marginBottom: 4 }}>🔒</p>
-              <p style={{ fontSize: 13, color: t.textMuted }}>Spelling hidden — listen and try to remember!</p>
-              {countdown > 0 && <p style={{ fontSize: 13, color: catColor || "#3498db", fontWeight: 600, marginTop: 6 }}>Revealing in {countdown}s</p>}
+              <p style={{ fontSize: 13, color: t.textMuted }}>{s ? s.spellingHidden : "Spelling hidden — listen and try to remember!"}</p>
+              {countdown > 0 && <p style={{ fontSize: 13, color: catColor || "#3498db", fontWeight: 600, marginTop: 6 }}>{s ? s.revealingIn(countdown) : `Revealing in ${countdown}s`}</p>}
             </div>
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 16 }}>
-            <SpeakButton word={word.word} speak={speak} speed={speed} label="Listen" t={t} />
-            <button onClick={toggleWord} style={{ padding: "6px 10px", borderRadius: 20, border: `1px solid ${t.border}`, background: showWord ? t.surface : "#fef3c7", color: showWord ? t.text : "#374151", cursor: "pointer", fontSize: 12 }}>{showWord ? "👁 Hide" : "👁 Show"} Spelling</button>
-            <button onClick={() => setShowDef(!showDef)} style={{ padding: "6px 10px", borderRadius: 20, border: `1px solid ${t.border}`, background: showDef ? (isDark ? "#1e3a5f" : "#f0f9ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>{showDef ? "Hide" : "Show"} Definition</button>
-            <button onClick={() => setShowTip(!showTip)} style={{ padding: "6px 10px", borderRadius: 20, border: `1px solid ${t.border}`, background: showTip ? "#fef3c7" : t.surface, color: showTip ? "#374151" : t.text, cursor: "pointer", fontSize: 12 }}>{showTip ? "Hide" : "Show"} Tip</button>
+            <SpeakButton word={word.word} speak={speak} speed={speed} label={s ? s.listen : "Listen"} t={t} s={s} />
+            <button onClick={toggleWord} style={{ padding: "6px 10px", borderRadius: 20, border: `1px solid ${t.border}`, background: showWord ? t.surface : "#fef3c7", color: showWord ? t.text : "#374151", cursor: "pointer", fontSize: 12 }}>👁 {showWord ? (s ? s.hideSpelling : "Hide Spelling") : (s ? s.showSpelling : "Show Spelling")}</button>
+            <button onClick={() => setShowDef(!showDef)} style={{ padding: "6px 10px", borderRadius: 20, border: `1px solid ${t.border}`, background: showDef ? (isDark ? "#1e3a5f" : "#f0f9ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>{showDef ? (s ? s.hideDefinition : "Hide Definition") : (s ? s.showDefinition : "Show Definition")}</button>
+            <button onClick={() => setShowTip(!showTip)} style={{ padding: "6px 10px", borderRadius: 20, border: `1px solid ${t.border}`, background: showTip ? "#fef3c7" : t.surface, color: showTip ? "#374151" : t.text, cursor: "pointer", fontSize: 12 }}>{showTip ? (s ? s.hideTip : "Hide Tip") : (s ? s.showTip : "Show Tip")}</button>
           </div>
-          {showDef && <DefinitionDisplay word={word} t={t} />}
+          {showDef && <DefinitionDisplay word={word} t={t} s={s} />}
           {showTip && <p style={{ color: "#92400e", fontSize: 14, background: "#fef3c7", padding: "10px 16px", borderRadius: 8, marginTop: 8 }}>💡 {word.tip}</p>}
         </div>
       </div>
@@ -516,24 +528,24 @@ function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, 
         {DELAY_OPTIONS.map(sec => (
           <button key={sec} onClick={() => setAutoReveal(sec)}
             style={{ padding: "3px 8px", borderRadius: 12, border: autoReveal === sec ? `2px solid ${catColor || "#3498db"}` : `1px solid ${t.border}`, background: autoReveal === sec ? (catColor || "#3498db") + "18" : t.surface, color: autoReveal === sec ? catColor || "#3498db" : t.textMuted, cursor: "pointer", fontSize: 11, fontWeight: autoReveal === sec ? 600 : 400 }}>
-            {sec === 0 ? "Off" : `${sec}s`}
+            {sec === 0 ? (s ? s.off : "Off") : `${sec}s`}
           </button>
         ))}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <button onClick={() => { setCurrentIndex(Math.max(0, currentIndex - 1)); resetCard(); }} disabled={currentIndex === 0}
-          style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: currentIndex === 0 ? "default" : "pointer", opacity: currentIndex === 0 ? 0.4 : 1, fontSize: 15 }}>← Previous</button>
+          style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: currentIndex === 0 ? "default" : "pointer", opacity: currentIndex === 0 ? 0.4 : 1, fontSize: 15 }}>{s ? s.previous : "← Previous"}</button>
         <button onClick={() => { setCurrentIndex(Math.min(words.length - 1, currentIndex + 1)); resetCard(); }} disabled={currentIndex === words.length - 1}
-          style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: catColor || "#3498db", color: "white", cursor: currentIndex === words.length - 1 ? "default" : "pointer", opacity: currentIndex === words.length - 1 ? 0.4 : 1, fontSize: 15, fontWeight: 600 }}>Next →</button>
+          style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: catColor || "#3498db", color: "white", cursor: currentIndex === words.length - 1 ? "default" : "pointer", opacity: currentIndex === words.length - 1 ? 0.4 : 1, fontSize: 15, fontWeight: 600 }}>{s ? s.next : "Next →"}</button>
       </div>
-      <p style={{ textAlign: "center", color: t.textMuted, fontSize: 12, marginTop: 12 }}>← → navigate · Space listen · Enter flip · Esc back</p>
+      <p style={{ textAlign: "center", color: t.textMuted, fontSize: 12, marginTop: 12 }}>{s ? s.keyboardShortcuts : "← → navigate · Space listen · Enter flip · Esc back"}</p>
     </div>
   );
 }
 
 // ─── Quiz Mode (Multiple Choice) ────────────────────────────────────────────
-function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool }) {
+function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale }) {
   const pool = wordPool || ALL_WORDS;
   const QUIZ_SIZE = Math.min(15, pool.length);
   const [questions, setQuestions] = useState([]);
@@ -558,7 +570,7 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
   }
 
   useEffect(() => { setQuestions(buildQuiz(pool)); }, []);
-  if (questions.length === 0) return <p style={{ textAlign: "center", padding: 40, color: t.text }}>Loading quiz...</p>;
+  if (questions.length === 0) return <p style={{ textAlign: "center", padding: 40, color: t.text }}>{s ? s.loadingQuiz : "Loading quiz..."}</p>;
 
   if (finished) {
     const total = questions.length;
@@ -566,19 +578,19 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
     return (
       <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center" }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>{pct >= 80 ? "🏆" : pct >= 60 ? "👍" : "📚"}</div>
-        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{score} / {total} Correct</h2>
-        <p style={{ color: t.textMuted, fontSize: 16, marginBottom: 24 }}>{pct >= 80 ? "¡Excelente! You're ready to compete!" : pct >= 60 ? "¡Bien hecho! Keep practicing." : "Keep studying — you'll get there!"}</p>
+        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{s ? s.nCorrect(score, total) : `${score} / ${total} Correct`}</h2>
+        <p style={{ color: t.textMuted, fontSize: 16, marginBottom: 24 }}>{pct >= 80 ? (s ? s.excellentReady : "¡Excelente! You're ready to compete!") : pct >= 60 ? (s ? s.goodJob : "¡Bien hecho! Keep practicing.") : (s ? s.keepStudying : "Keep studying — you'll get there!")}</p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setFinished(false); setCurrentQ(0); setScore(0); setSelected(null); setMissed([]); setQuestions(buildQuiz(pool)); }}
-            style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Try Again</button>
+            style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.tryAgain : "Try Again"}</button>
           {missed.length > 0 && (
             <button onClick={() => { setFinished(false); setCurrentQ(0); setScore(0); setSelected(null); setRetryMissed(true); setQuestions(buildQuiz(missed)); setMissed([]); }}
-              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Practice {missed.length} Missed</button>
+              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.practiceMissed(missed.length) : `Practice ${missed.length} Missed`}</button>
           )}
-          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>Back to Menu</button>
+          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>{s ? s.backToMenu : "Back to Menu"}</button>
         </div>
-        <SupportBanner t={t} compact />
-        <AdSlot t={t} />
+        <SupportBanner t={t} compact s={s} />
+        <AdSlot t={t} s={s} />
       </div>
     );
   }
@@ -586,18 +598,18 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
   const q = questions[currentQ];
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} t={t} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#3498db", height: 6, borderRadius: 8, width: `${((currentQ + 1) / questions.length) * 100}%`, transition: "width 0.3s" }} />
       </div>
-      <p style={{ color: t.textMuted, textAlign: "center", marginBottom: 8, fontSize: 14 }}>Question {currentQ + 1} of {questions.length}{retryMissed ? " (missed words)" : ""}</p>
+      <p style={{ color: t.textMuted, textAlign: "center", marginBottom: 8, fontSize: 14 }}>{s ? s.questionNOfM(currentQ + 1, questions.length) : `Question ${currentQ + 1} of ${questions.length}`}{retryMissed ? ` ${s ? s.missedWordsLabel : "(missed words)"}` : ""}</p>
       <div style={{ background: t.card, borderRadius: 16, padding: "22px 18px", boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.3)" : "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
-          <p style={{ fontSize: 15, color: t.text }}>Which is the correct spelling?</p>
-          <SpeakButton word={q.correct} speak={speak} speed={speed} label="" t={t} />
-          <FavButton word={q.correct} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+          <p style={{ fontSize: 15, color: t.text }}>{s ? s.whichCorrectSpelling : "Which is the correct spelling?"}</p>
+          <SpeakButton word={q.correct} speak={speak} speed={speed} label="" t={t} s={s} />
+          <FavButton word={q.correct} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
         </div>
-        <div style={{ marginBottom: 16 }}><DefinitionDisplay word={q} t={t} /></div>
+        <div style={{ marginBottom: 16 }}><DefinitionDisplay word={q} t={t} s={s} /></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {q.options.map((opt, i) => {
             let bg = t.surface, border = `1px solid ${t.border}`;
@@ -620,20 +632,20 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
         </div>
         {selected !== null && (
           <div style={{ marginTop: 16 }}>
-            <p style={{ color: selected === q.correct ? "#059669" : "#dc2626", fontWeight: 600, marginBottom: 4 }}>{selected === q.correct ? "✓ ¡Correcto!" : `✗ Correct: ${q.correct}`}</p>
+            <p style={{ color: selected === q.correct ? "#059669" : "#dc2626", fontWeight: 600, marginBottom: 4 }}>{selected === q.correct ? (s ? s.correctExclaim : "✓ ¡Correcto!") : (s ? s.incorrectAnswer(q.correct) : `✗ Correct: ${q.correct}`)}</p>
             <p style={{ fontSize: 13, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8 }}>💡 {q.tip}</p>
             <button onClick={() => { if (currentQ + 1 >= questions.length) setFinished(true); else { setCurrentQ(currentQ + 1); setSelected(null); } }}
-              style={{ marginTop: 14, padding: "10px 28px", borderRadius: 10, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentQ + 1 >= questions.length ? "See Results" : "Next →"}</button>
+              style={{ marginTop: 14, padding: "10px 28px", borderRadius: 10, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentQ + 1 >= questions.length ? (s ? s.seeResults : "See Results") : (s ? s.next : "Next →")}</button>
           </div>
         )}
       </div>
-      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>Score: {score}/{currentQ + (selected !== null ? 1 : 0)}</p>
+      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>{s ? s.score : "Score"}: {score}/{currentQ + (selected !== null ? 1 : 0)}</p>
     </div>
   );
 }
 
 // ─── Spell Mode (Type with Hints) ───────────────────────────────────────────
-function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool }) {
+function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale }) {
   const pool = wordPool || ALL_WORDS;
   const ROUND_SIZE = Math.min(15, pool.length);
   const [words] = useState(() => shuffleArray(pool).slice(0, ROUND_SIZE));
@@ -664,62 +676,62 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
     return (
       <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center" }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>{pct >= 80 ? "🎯" : pct >= 60 ? "💪" : "📖"}</div>
-        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{score} / {ROUND_SIZE}</h2>
-        <p style={{ color: t.textMuted, marginBottom: 24 }}>{pct >= 80 ? "¡Increíble! Your spelling is on point!" : "Keep practicing those accents and special characters!"}</p>
+        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{s ? s.nCorrect(score, ROUND_SIZE) : `${score} / ${ROUND_SIZE}`}</h2>
+        <p style={{ color: t.textMuted, marginBottom: 24 }}>{pct >= 80 ? (s ? s.incredibleSpelling : "¡Increíble! Your spelling is on point!") : (s ? s.keepPracticingAccents : "Keep practicing those accents and special characters!")}</p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           {missed.length > 0 && (
             <button onClick={() => { onBack("spell-missed", missed); }}
-              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Practice {missed.length} Missed</button>
+              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.practiceMissed(missed.length) : `Practice ${missed.length} Missed`}</button>
           )}
-          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>Back to Menu</button>
+          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>{s ? s.backToMenu : "Back to Menu"}</button>
         </div>
-        <SupportBanner t={t} compact />
-        <AdSlot t={t} />
+        <SupportBanner t={t} compact s={s} />
+        <AdSlot t={t} s={s} />
       </div>
     );
   }
 
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} t={t} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#9b59b6", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / ROUND_SIZE) * 100}%`, transition: "width 0.3s" }} />
       </div>
       <div style={{ background: t.card, borderRadius: 16, padding: "22px 18px", boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.3)" : "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 4, marginBottom: 4 }}>
-          <p style={{ fontSize: 13, color: t.textMuted }}>Word {currentIndex + 1} of {ROUND_SIZE}</p>
-          <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+          <p style={{ fontSize: 13, color: t.textMuted }}>{s ? s.wordNOfM(currentIndex + 1, ROUND_SIZE) : `Word ${currentIndex + 1} of ${ROUND_SIZE}`}</p>
+          <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
         </div>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <SpeakButton word={word.word} speak={speak} speed={speed} label="Listen" t={t} />
+          <SpeakButton word={word.word} speak={speak} speed={speed} label={s ? s.listen : "Listen"} t={t} s={s} />
         </div>
-        <div style={{ marginBottom: 8 }}><DefinitionDisplay word={word} t={t} /></div>
+        <div style={{ marginBottom: 8 }}><DefinitionDisplay word={word} t={t} s={s} /></div>
         <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 16 }}>💡 {word.tip}</p>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
-            placeholder="Type or use mic to spell..." disabled={result !== null}
+            placeholder={s ? s.typeOrMic : "Type or use mic to spell..."} disabled={result !== null}
             style={{ flex: 1, padding: "12px 14px", fontSize: 19, borderRadius: 10, border: `2px solid ${t.border}`, textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: t.surface, color: t.text }} autoFocus />
-          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} />
+          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} s={s} />
         </div>
         {result === null && <AccentToolbar onChar={c => setInput(prev => prev + c)} inputRef={inputRef} t={t} />}
         {result === null ? (
-          <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Check ✓</button>
+          <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.check : "Check ✓"}</button>
         ) : (
           <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 18, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626" }}>{result.correct ? (result.accentClose ? "✓ Correct letters! Accents need work." : "✓ ¡Perfecto!") : result.similarity >= 0.8 ? `Almost! (${Math.round(result.similarity * 100)}% match)` : `✗ Correct: ${result.answer}`}</p>
-            {!result.correct && <p style={{ fontSize: 14, color: t.textMuted, marginTop: 4 }}>You wrote: <span style={{ textDecoration: "line-through" }}>{input}</span></p>}
+            <p style={{ fontSize: 18, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626" }}>{result.correct ? (result.accentClose ? (s ? s.correctLettersAccents : "✓ Correct letters! Accents need work.") : (s ? s.perfecto : "✓ ¡Perfecto!")) : result.similarity >= 0.8 ? (s ? s.almost(Math.round(result.similarity * 100)) : `Almost! (${Math.round(result.similarity * 100)}% match)`) : (s ? s.incorrectAnswer(result.answer) : `✗ Correct: ${result.answer}`)}</p>
+            {!result.correct && <p style={{ fontSize: 14, color: t.textMuted, marginTop: 4 }}>{s ? s.youWrote : "You wrote"}: <span style={{ textDecoration: "line-through" }}>{input}</span></p>}
             <button onClick={() => { if (currentIndex + 1 >= ROUND_SIZE) setFinished(true); else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); } }}
-              style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? "See Results" : "Next →"}</button>
+              style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? (s ? s.seeResults : "See Results") : (s ? s.next : "Next →")}</button>
           </div>
         )}
       </div>
-      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>Score: {score}</p>
+      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>{s ? s.score : "Score"}: {score}</p>
     </div>
   );
 }
 
 // ─── Listen Mode (Competition Style) ────────────────────────────────────────
-function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool }) {
+function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale }) {
   const pool = wordPool || ALL_WORDS;
   const ROUND_SIZE = Math.min(15, pool.length);
   const [words] = useState(() => shuffleArray(pool).slice(0, ROUND_SIZE));
@@ -770,37 +782,37 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
     return (
       <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center" }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>{pct >= 90 ? "🏆" : pct >= 70 ? "🎯" : pct >= 50 ? "💪" : "📖"}</div>
-        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{score} / {ROUND_SIZE}</h2>
+        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{s ? s.nCorrect(score, ROUND_SIZE) : `${score} / ${ROUND_SIZE}`}</h2>
         <p style={{ color: t.textMuted, fontSize: 16, marginBottom: 24 }}>
-          {pct >= 90 ? "¡Campeón/a! You nailed it by ear alone!" : pct >= 70 ? "¡Muy bien! Strong listening skills!" : pct >= 50 ? "Good effort — the tricky ones take practice." : "This mode is tough! Review the categories and try again."}
+          {pct >= 90 ? (s ? s.championEar : "¡Campeón/a! You nailed it by ear alone!") : pct >= 70 ? (s ? s.strongListening : "¡Muy bien! Strong listening skills!") : pct >= 50 ? (s ? s.goodEffort : "Good effort — the tricky ones take practice.") : (s ? s.toughMode : "This mode is tough! Review the categories and try again.")}
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <button onClick={() => { setFinished(false); setCurrentIndex(0); setScore(0); setResult(null); setInput(""); setShowDef(false); setHasListened(false); setMissed([]); }}
-            style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Try Again</button>
+            style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.tryAgain : "Try Again"}</button>
           {missed.length > 0 && (
             <button onClick={() => { onBack("listen-missed", missed); }}
-              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Practice {missed.length} Missed</button>
+              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.practiceMissed(missed.length) : `Practice ${missed.length} Missed`}</button>
           )}
-          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>Back to Menu</button>
+          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>{s ? s.backToMenu : "Back to Menu"}</button>
         </div>
-        <SupportBanner t={t} compact />
-        <AdSlot t={t} />
+        <SupportBanner t={t} compact s={s} />
+        <AdSlot t={t} s={s} />
       </div>
     );
   }
 
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} t={t} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#e67e22", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / ROUND_SIZE) * 100}%`, transition: "width 0.3s" }} />
       </div>
       <div style={{ background: t.card, borderRadius: 16, padding: "22px 18px", boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.3)" : "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 4, marginBottom: 2 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: "#e67e22", fontWeight: 700 }}>🎧 Listen & Spell</p>
-          <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: "#e67e22", fontWeight: 700 }}>🎧 {s ? s.listenAndSpell : "Listen & Spell"}</p>
+          <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
         </div>
-        <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 12 }}>Word {currentIndex + 1} of {ROUND_SIZE}</p>
+        <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 12 }}>{s ? s.wordNOfM(currentIndex + 1, ROUND_SIZE) : `Word ${currentIndex + 1} of ${ROUND_SIZE}`}</p>
 
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
           <button onClick={handleListen}
@@ -808,14 +820,14 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
             title="Listen to the word">🔊</button>
         </div>
 
-        <p style={{ fontSize: 11, color: t.textMuted, marginBottom: 6 }}>Just like the real bee — you can ask for:</p>
+        <p style={{ fontSize: 11, color: t.textMuted, marginBottom: 6 }}>{s ? s.justLikeRealBee : "Just like the real bee — you can ask for:"}</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
-          <button onClick={handleListen} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>🔁 Repeat</button>
-          <button onClick={handleListenSlow} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>🐢 Slow</button>
-          <button onClick={handleDefinition} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: showDef ? (isDark ? "#1e3a5f" : "#f0f9ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>📖 Def</button>
+          <button onClick={handleListen} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>🔁 {s ? s.repeat : "Repeat"}</button>
+          <button onClick={handleListenSlow} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>🐢 {s ? s.slow : "Slow"}</button>
+          <button onClick={handleDefinition} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: showDef ? (isDark ? "#1e3a5f" : "#f0f9ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>📖 {s ? s.def : "Def"}</button>
         </div>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <button onClick={handleSentence} style={{ padding: "7px 14px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>💬 Use in context</button>
+          <button onClick={handleSentence} style={{ padding: "7px 14px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>💬 {s ? s.useInContext : "Use in context"}</button>
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 12 }}>
@@ -831,39 +843,39 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
 
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
-            placeholder={hasListened ? "Type or use mic to spell..." : "Press 🔊 first"} disabled={result !== null}
+            placeholder={hasListened ? (s ? s.typeOrMic : "Type or use mic to spell...") : (s ? s.pressListenFirst : "Press 🔊 first")} disabled={result !== null}
             style={{ flex: 1, padding: "12px 14px", fontSize: 20, borderRadius: 10, border: result === null ? "2px solid #f59e0b" : result.correct ? "2px solid #10b981" : "2px solid #ef4444", textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: result === null ? t.surface : result.correct ? (isDark ? "#064e3b" : "#d1fae5") : (isDark ? "#7f1d1d" : "#fee2e2"), color: t.text }} autoFocus />
-          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} />
+          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} s={s} />
         </div>
 
         {result === null && <AccentToolbar onChar={c => setInput(prev => prev + c)} inputRef={inputRef} t={t} />}
 
         {result === null ? (
-          <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Check ✓</button>
+          <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.check : "Check ✓"}</button>
         ) : (
           <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>{result.correct ? (result.accentClose ? "✓ Right letters! Check accents." : "✓ ¡Correcto!") : result.similarity >= 0.8 ? `Almost! (${Math.round(result.similarity * 100)}% match)` : "✗ Incorrect"}</p>
+            <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>{result.correct ? (result.accentClose ? (s ? s.rightLettersCheckAccents : "✓ Right letters! Check accents.") : (s ? s.correctExclaim : "✓ ¡Correcto!")) : result.similarity >= 0.8 ? (s ? s.almost(Math.round(result.similarity * 100)) : `Almost! (${Math.round(result.similarity * 100)}% match)`) : (s ? s.incorrect : "✗ Incorrect")}</p>
             <p style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", color: t.text, marginBottom: 4 }}>{result.answer}</p>
-            {!result.correct && <p style={{ fontSize: 14, color: t.textMuted }}>You wrote: <span style={{ textDecoration: "line-through", color: "#ef4444" }}>{input}</span></p>}
+            {!result.correct && <p style={{ fontSize: 14, color: t.textMuted }}>{s ? s.youWrote : "You wrote"}: <span style={{ textDecoration: "line-through", color: "#ef4444" }}>{input}</span></p>}
             <p style={{ fontSize: 13, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8, marginTop: 8 }}>💡 {word.tip}</p>
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10 }}>
-              <SpeakButton word={word.word} speak={speak} speed={speed} label="Hear it" t={t} />
+              <SpeakButton word={word.word} speak={speak} speed={speed} label={s ? s.hearIt : "Hear it"} t={t} s={s} />
             </div>
-            <button onClick={nextWord} style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? "See Results" : "Next →"}</button>
+            <button onClick={nextWord} style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? (s ? s.seeResults : "See Results") : (s ? s.next : "Next →")}</button>
           </div>
         )}
       </div>
-      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>Score: {score}</p>
+      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>{s ? s.score : "Score"}: {score}</p>
     </div>
   );
 }
 
 // ─── Search Component ───────────────────────────────────────────────────────
-function SearchBar({ value, onChange, t }) {
+function SearchBar({ value, onChange, t, s }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <input type="text" value={value} onChange={e => onChange(e.target.value)}
-        placeholder="🔍 Search words..."
+        placeholder={`🔍 ${s ? s.searchWordsPlaceholder : "Search words..."}`}
         style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: `1px solid ${t.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", background: t.surface, color: t.text }} />
     </div>
   );
@@ -874,7 +886,7 @@ const ALL_LETTERS = [...new Set(ALL_WORDS.map(w => w.word[0].toUpperCase()))].so
 const CAT_ENTRIES = Object.entries(CATEGORIES);
 const stripAccents = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords }) {
+function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords, s, locale, toggleLocale }) {
   const [search, setSearch] = useState("");
   const [activeLetter, setActiveLetter] = useState(null);
   const [activeCategory, setActiveCategory] = useState(null);
@@ -908,12 +920,12 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel="Menu" speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} t={t} />
-      <h2 style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 12, textAlign: "center" }}>📖 Word List</h2>
+      <ModeTopBar onBack={onBack} backLabel={s ? s.menu : "Menu"} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 12, textAlign: "center" }}>📖 {s ? s.wordListTitle : "Word List"}</h2>
 
       {/* Search */}
       <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="🔍 Search words, definitions..."
+        placeholder={`🔍 ${s ? s.searchWordsDefsPlaceholder : "Search words, definitions..."}`}
         style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1px solid ${t.border}`, fontSize: 14, outline: "none", boxSizing: "border-box", background: t.surface, color: t.text, marginBottom: 10 }} />
 
       {/* Letter Strip */}
@@ -931,14 +943,14 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
         {CAT_ENTRIES.map(([name, data]) => (
           <button key={name} onClick={() => setActiveCategory(activeCategory === name ? null : name)}
             style={{ padding: "5px 10px", borderRadius: 16, border: activeCategory === name ? `2px solid ${data.color}` : `1px solid ${t.border}`, background: activeCategory === name ? data.color + "20" : t.surface, color: activeCategory === name ? data.color : t.textMuted, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap", flexShrink: 0, fontWeight: activeCategory === name ? 600 : 400 }}>
-            {data.icon} {name}
+            {data.icon} {s && s.cat[name] ? s.cat[name] : name}
           </button>
         ))}
       </div>
 
       {/* Quick Filters */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[{ key: "favorites", label: "⭐ Favorites", color: "#f59e0b" }, { key: "mastered", label: "✅ Mastered", color: "#10b981" }, { key: "not-practiced", label: "🆕 Not practiced", color: "#6366f1" }].map(f => (
+        {[{ key: "favorites", label: `⭐ ${s ? s.favoritesFilter : "Favorites"}`, color: "#f59e0b" }, { key: "mastered", label: `✅ ${s ? s.masteredFilter : "Mastered"}`, color: "#10b981" }, { key: "not-practiced", label: `🆕 ${s ? s.notPracticedFilter : "Not practiced"}`, color: "#6366f1" }].map(f => (
           <button key={f.key} onClick={() => setQuickFilter(quickFilter === f.key ? null : f.key)}
             style={{ padding: "5px 10px", borderRadius: 16, border: quickFilter === f.key ? `2px solid ${f.color}` : `1px solid ${t.border}`, background: quickFilter === f.key ? f.color + "20" : t.surface, color: quickFilter === f.key ? f.color : t.textMuted, cursor: "pointer", fontSize: 12, fontWeight: quickFilter === f.key ? 600 : 400 }}>
             {f.label}
@@ -947,7 +959,7 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
       </div>
 
       {/* Results Count */}
-      <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>Showing {filtered.length} of {ALL_WORDS.length} words</p>
+      <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>{s ? s.showingNOfM(filtered.length, ALL_WORDS.length) : `Showing ${filtered.length} of ${ALL_WORDS.length} words`}</p>
 
       {/* Word List */}
       {filtered.length > 0 ? (
@@ -958,10 +970,10 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
             return (
               <button key={w.word} onClick={() => handleWordClick(w)}
                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", borderBottom: i < filtered.length - 1 ? `1px solid ${t.border}` : "none", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0 }} title={stats.mastered ? "Mastered" : stats.total > 0 ? "Practiced" : "Not practiced"} />
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0 }} title={stats.mastered ? (s ? s.mastered : "Mastered") : stats.total > 0 ? (s ? s.practiced : "Practiced") : (s ? s.notPracticed : "Not practiced")} />
                 <span style={{ fontWeight: 600, color: t.text, fontSize: 15, fontFamily: "Georgia, serif", flexShrink: 0 }}>{w.word}</span>
                 <span style={{ color: t.textMuted, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{w.en}</span>
-                <FavButton word={w.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} />
+                <FavButton word={w.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
               </button>
             );
           })}
@@ -969,8 +981,8 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
       ) : (
         <div style={{ textAlign: "center", padding: "40px 20px", color: t.textMuted }}>
           <p style={{ fontSize: 32, marginBottom: 8 }}>🔍</p>
-          <p style={{ fontSize: 15 }}>No words match your filters</p>
-          <p style={{ fontSize: 13, marginTop: 4 }}>Try adjusting your search or removing filters</p>
+          <p style={{ fontSize: 15 }}>{s ? s.noWordsMatchFilters : "No words match your filters"}</p>
+          <p style={{ fontSize: 13, marginTop: 4 }}>{s ? s.tryAdjusting : "Try adjusting your search or removing filters"}</p>
         </div>
       )}
     </div>
@@ -989,6 +1001,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const { speak, ready } = useSpanishVoice();
   const { isDark, toggleDark } = useDarkMode();
+  const { locale, toggleLocale, s } = useLocale();
   const { recordResult, getWordStats, getCategoryStats, getMasteredCount } = useProgress();
   const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const t = isDark ? DARK_THEME : LIGHT_THEME;
@@ -1046,7 +1059,7 @@ export default function App() {
     setMode(modeName);
   };
 
-  const sharedProps = { speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite };
+  const sharedProps = { speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale };
 
   const wrapper = (children) => (
     <div style={{ minHeight: "100vh", background: t.bg, padding: "24px 16px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", transition: "background 0.3s" }}>
@@ -1063,22 +1076,22 @@ export default function App() {
   }
   if (mode === "study-favorites") {
     return wrapper(
-      <StudyMode words={favWords} category="Favorites" catColor="#f59e0b" onBack={() => goBack()} {...sharedProps} />
+      <StudyMode words={favWords} category={s ? s.favorites : "Favorites"} catColor="#f59e0b" onBack={() => goBack()} {...sharedProps} />
     );
   }
   if (mode === "study-search" && searchStudyWords) {
     return wrapper(
-      <StudyMode words={searchStudyWords} category="Search Results" catColor="#6366f1" onBack={() => { goBack(); }} {...sharedProps} />
+      <StudyMode words={searchStudyWords} category={s ? s.searchResults : "Search Results"} catColor="#6366f1" onBack={() => { goBack(); }} {...sharedProps} />
     );
   }
   if (mode === "wordlist") {
     return wrapper(
-      <WordListMode onBack={() => goBack()} speed={speed} setSpeed={setSpeed} speak={speak} t={t} isDark={isDark} toggleDark={toggleDark} isFavorite={isFavorite} toggleFavorite={toggleFavorite} getWordStats={getWordStats} onStudyWords={(words) => { setWordlistStudyWords(words); setMode("study-wordlist"); }} />
+      <WordListMode onBack={() => goBack()} speed={speed} setSpeed={setSpeed} speak={speak} t={t} isDark={isDark} toggleDark={toggleDark} isFavorite={isFavorite} toggleFavorite={toggleFavorite} getWordStats={getWordStats} onStudyWords={(words) => { setWordlistStudyWords(words); setMode("study-wordlist"); }} s={s} locale={locale} toggleLocale={toggleLocale} />
     );
   }
   if (mode === "study-wordlist" && wordlistStudyWords) {
     return wrapper(
-      <StudyMode words={wordlistStudyWords} category="Word List" catColor="#6366f1" onBack={() => setMode("wordlist")} {...sharedProps} />
+      <StudyMode words={wordlistStudyWords} category={s ? s.wordList : "Word List"} catColor="#6366f1" onBack={() => setMode("wordlist")} {...sharedProps} />
     );
   }
   if (mode === "quiz") return wrapper(<QuizMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
@@ -1088,14 +1101,15 @@ export default function App() {
   return wrapper(
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: -20 }}>
-        <DarkModeToggle isDark={isDark} toggleDark={toggleDark} />
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 2, marginBottom: -20 }}>
+        <LocaleToggle locale={locale} toggleLocale={toggleLocale} />
+        <DarkModeToggle isDark={isDark} toggleDark={toggleDark} s={s} />
       </div>
       <div style={{ textAlign: "center", marginBottom: 24 }}>
         <p style={{ fontSize: 40, marginBottom: 4 }}>🐝</p>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: t.text, marginBottom: 4 }}>Spanish Spelling Bee</h1>
-        <p style={{ fontSize: 15, color: t.textMuted }}>Study Guide — 2026 NSSB Word List</p>
-        <p style={{ fontSize: 13, color: t.textMuted, marginTop: 4 }}>{ALL_WORDS.length} words · {masteredCount} mastered</p>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: t.text, marginBottom: 4 }}>{s.appTitle}</h1>
+        <p style={{ fontSize: 15, color: t.textMuted }}>{s.appSubtitle}</p>
+        <p style={{ fontSize: 13, color: t.textMuted, marginTop: 4 }}>{s.wordsAndMastered(ALL_WORDS.length, masteredCount)}</p>
         {masteredCount > 0 && (
           <div style={{ background: t.border, borderRadius: 8, height: 6, maxWidth: 200, margin: "8px auto 0" }}>
             <div style={{ background: "#10b981", height: 6, borderRadius: 8, width: `${Math.round((masteredCount / ALL_WORDS.length) * 100)}%`, transition: "width 0.5s" }} />
@@ -1109,50 +1123,50 @@ export default function App() {
       </div>
 
       {/* Practice Modes */}
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>Practice Modes</h2>
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.practiceModes}</h2>
       <div style={{ display: "flex", gap: 10, marginBottom: 28, flexWrap: "wrap" }}>
         <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("listen"); }}
           style={{ flex: "1 1 100%", padding: "18px 16px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #e67e22, #f39c12)", color: "white", cursor: "pointer", fontSize: 16, fontWeight: 700, boxShadow: "0 4px 16px rgba(230,126,34,0.3)", textAlign: "center" }}>
-          🎧 Listen & Spell — Competition Style
-          <span style={{ display: "block", fontSize: 12, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>Hear the word, ask for definition or repetition, then spell it</span>
+          🎧 {s.listenSpellTitle}
+          <span style={{ display: "block", fontSize: 12, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>{s.listenSpellDesc}</span>
         </button>
         <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("quiz"); }}
-          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>🎯 Multiple Choice</button>
+          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>🎯 {s.multipleChoice}</button>
         <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("spell"); }}
-          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>⌨️ Type with Hints</button>
+          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>⌨️ {s.typeWithHints}</button>
         <button onClick={() => setMode("wordlist")}
           style={{ flex: "1 1 100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
-          📖 Word List
-          <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.textMuted, marginTop: 2 }}>Browse, filter, and search all {ALL_WORDS.length} words</span>
+          📖 {s.wordListTitle}
+          <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.textMuted, marginTop: 2 }}>{s.wordListDesc(ALL_WORDS.length)}</span>
         </button>
       </div>
 
       {/* Favorites Section */}
       {favWords.length > 0 && (
         <>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>⭐ Favorites</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>⭐ {s.favorites}</h2>
           <button onClick={() => setMode("study-favorites")}
             style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 12, border: `2px solid #f59e0b`, background: isDark ? "#3d2a14" : "#fffbeb", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 20, transition: "box-shadow 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.boxShadow = "0 2px 12px rgba(245,158,11,0.2)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
             <div style={{ width: 44, height: 44, borderRadius: 10, background: "#f59e0b18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>⭐</div>
             <div style={{ flex: 1 }}>
-              <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>Your Starred Words</p>
-              <p style={{ color: t.textMuted, fontSize: 13 }}>Practice your bookmarked words</p>
+              <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.yourStarredWords}</p>
+              <p style={{ color: t.textMuted, fontSize: 13 }}>{s.practiceBookmarked}</p>
             </div>
-            <span style={{ color: "#f59e0b", fontSize: 13, flexShrink: 0, fontWeight: 600 }}>{favWords.length} words</span>
+            <span style={{ color: "#f59e0b", fontSize: 13, flexShrink: 0, fontWeight: 600 }}>{s.nWords(favWords.length)}</span>
           </button>
         </>
       )}
 
       {/* Search */}
-      <SearchBar value={search} onChange={setSearch} t={t} />
+      <SearchBar value={search} onChange={setSearch} t={t} s={s} />
 
       {/* Word Search Results */}
       {search.length >= 2 && (
         <div style={{ marginBottom: 20 }}>
           {filteredWords.length > 0 ? (
             <>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 8 }}>🔍 {filteredWords.length} word{filteredWords.length !== 1 ? "s" : ""} found</h3>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 8 }}>🔍 {s.nWordsFound(filteredWords.length)}</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 320, overflowY: "auto", borderRadius: 12, border: `1px solid ${t.border}`, background: t.card }}>
                 {filteredWords.slice(0, 100).map((w, i) => (
                   <button key={w.word} onClick={() => {
@@ -1167,16 +1181,16 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {filteredWords.length > 100 && <p style={{ fontSize: 12, color: t.textMuted, marginTop: 6, textAlign: "center" }}>Showing first 100 of {filteredWords.length} results</p>}
+              {filteredWords.length > 100 && <p style={{ fontSize: 12, color: t.textMuted, marginTop: 6, textAlign: "center" }}>{s.showingFirstN(100, filteredWords.length)}</p>}
             </>
           ) : (
-            <p style={{ fontSize: 13, color: t.textMuted, textAlign: "center" }}>No words match "{search}"</p>
+            <p style={{ fontSize: 13, color: t.textMuted, textAlign: "center" }}>{s.noWordsMatch(search)}</p>
           )}
         </div>
       )}
 
       {/* Study by Category */}
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>Study by Category</h2>
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.studyByCategory}</h2>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filteredCategories.map(([name, data]) => {
           const words = categoryWords[name] || [];
@@ -1190,8 +1204,8 @@ export default function App() {
                   {data.icon}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{name}</p>
-                  <p style={{ color: t.textMuted, fontSize: 13 }}>{data.description}</p>
+                  <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.cat[name] || name}</p>
+                  <p style={{ color: t.textMuted, fontSize: 13 }}>{s.catDesc[name] || data.description}</p>
                   {stats.percent > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                       <div style={{ background: t.border, borderRadius: 4, height: 4, flex: 1, maxWidth: 80 }}>
@@ -1201,15 +1215,15 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <span style={{ color: t.textMuted, fontSize: 13, flexShrink: 0 }}>{words.length} words</span>
+                <span style={{ color: t.textMuted, fontSize: 13, flexShrink: 0 }}>{s.nWords(words.length)}</span>
               </button>
               <div style={{ display: "flex", gap: 6, padding: "0 18px 12px", marginTop: -4 }}>
                 <button onClick={() => startCategoryMode("quiz", name)}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#3498db", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎯 Quiz</button>
+                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#3498db", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎯 {s.quiz}</button>
                 <button onClick={() => startCategoryMode("spell", name)}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#9b59b6", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>⌨️ Spell</button>
+                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#9b59b6", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>⌨️ {s.spell}</button>
                 <button onClick={() => startCategoryMode("listen", name)}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#e67e22", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎧 Listen</button>
+                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#e67e22", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎧 {s.listen}</button>
               </div>
             </div>
           );
@@ -1217,13 +1231,13 @@ export default function App() {
       </div>
 
       {/* Support & Ads */}
-      <SupportBanner t={t} />
-      <AdSlot t={t} />
+      <SupportBanner t={t} s={s} />
+      <AdSlot t={t} s={s} />
 
       {/* Footer */}
       <div style={{ textAlign: "center", marginTop: 20, paddingBottom: 20, color: t.textMuted, fontSize: 12 }}>
-        <p>National Spanish Spelling Bee — July 10-11, 2026</p>
-        <p>Albuquerque, NM • nationalspanishspellingbee.com</p>
+        <p>{s.footerEvent}</p>
+        <p>{s.footerLocation}</p>
       </div>
     </div>
   );
