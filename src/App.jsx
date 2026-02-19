@@ -130,6 +130,131 @@ function generateMisspellings(word) {
   return [...new Set(results)].filter(r => r !== word).slice(0, 6);
 }
 
+// ─── Voice Spelling Recognition ─────────────────────────────────────────────
+const HAS_SPEECH = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+const LETTER_MULTI = {
+  "a con acento": "á", "a con tilde": "á", "a acento": "á",
+  "e con acento": "é", "e con tilde": "é", "e acento": "é",
+  "i con acento": "í", "i con tilde": "í", "i acento": "í",
+  "o con acento": "ó", "o con tilde": "ó", "o acento": "ó",
+  "u con acento": "ú", "u con tilde": "ú", "u acento": "ú",
+  "u con diéresis": "ü", "u con crema": "ü", "u diéresis": "ü",
+  "be grande": "b", "be larga": "b", "b grande": "b",
+  "ve corta": "v", "ve chica": "v", "uve corta": "v", "v chica": "v",
+  "doble erre": "rr", "doble r": "rr", "doble ere": "rr",
+  "doble ele": "ll", "doble l": "ll",
+  "doble ve": "w", "doble uve": "w", "doble u": "w",
+  "i griega": "y",
+};
+const LETTER_SINGLE = {
+  "a": "a", "be": "b", "ce": "c", "de": "d", "e": "e",
+  "efe": "f", "ge": "g", "hache": "h", "ache": "h", "i": "i",
+  "jota": "j", "ka": "k", "ele": "l", "eme": "m", "ene": "n",
+  "eñe": "ñ", "o": "o", "pe": "p", "cu": "q", "erre": "r",
+  "ere": "r", "ese": "s", "te": "t", "u": "u", "uve": "v",
+  "ve": "v", "equis": "x", "ye": "y", "zeta": "z", "seta": "z",
+};
+const BV_NAMES = new Set(["be", "ve", "uve"]);
+const MULTI_KEYS = Object.keys(LETTER_MULTI).sort((a, b) => b.length - a.length);
+
+function matchLetterName(text) {
+  const t = text.toLowerCase().trim();
+  // Multi-word exact
+  for (const name of MULTI_KEYS) {
+    if (t === name || t.startsWith(name + " ") || t.endsWith(" " + name)) {
+      return { letter: LETTER_MULTI[name], raw: name, ambiguous: null };
+    }
+  }
+  // Single-word exact
+  if (LETTER_SINGLE[t]) {
+    return { letter: LETTER_SINGLE[t], raw: t, ambiguous: BV_NAMES.has(t) ? ["b", "v"] : null };
+  }
+  // Contains match for multi-word
+  for (const name of MULTI_KEYS) {
+    if (t.includes(name)) return { letter: LETTER_MULTI[name], raw: name, ambiguous: null };
+  }
+  // Contains match for single-word (3+ char names to avoid false positives)
+  for (const [name, letter] of Object.entries(LETTER_SINGLE)) {
+    if (name.length >= 3 && t.includes(name)) {
+      return { letter, raw: name, ambiguous: BV_NAMES.has(name) ? ["b", "v"] : null };
+    }
+  }
+  // Single char fallback
+  if (t.length === 1 && /[a-záéíóúüñ]/.test(t)) return { letter: t, raw: t, ambiguous: null };
+  return null;
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => { const r = new Array(n + 1); r[0] = i; return r; });
+  for (let j = 1; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[m][n];
+}
+
+function compareSpelling(attempt, target) {
+  const a = attempt.trim().toLowerCase(), t = target.toLowerCase();
+  if (a === t) return { exact: true, accentClose: false, similarity: 1 };
+  const aN = stripAccents(a), tN = stripAccents(t);
+  if (aN === tN) return { exact: false, accentClose: true, similarity: 0.95 };
+  const dist = levenshtein(aN, tN);
+  const maxLen = Math.max(aN.length, tN.length);
+  const similarity = maxLen > 0 ? Math.round((1 - dist / maxLen) * 100) / 100 : 0;
+  return { exact: false, accentClose: false, similarity };
+}
+
+function useVoiceSpelling() {
+  const [listening, setListening] = useState(false);
+  const [lastHeard, setLastHeard] = useState(null);
+  const [ambiguity, setAmbiguity] = useState(null);
+  const recRef = useRef(null);
+  const callbackRef = useRef(null);
+  const listeningRef = useRef(false);
+
+  useEffect(() => { return () => { if (recRef.current) { recRef.current.onend = null; recRef.current.stop(); recRef.current = null; } }; }, []);
+
+  const start = useCallback((onLetter) => {
+    if (!HAS_SPEECH) return;
+    callbackRef.current = onLetter;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "es-MX";
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          const transcript = event.results[i][0].transcript.trim();
+          const match = matchLetterName(transcript);
+          setLastHeard({ transcript, match });
+          if (match) {
+            if (match.ambiguous) setAmbiguity(match.ambiguous);
+            else callbackRef.current?.(match.letter);
+          }
+        }
+      }
+    };
+    rec.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") console.warn("Speech error:", e.error); };
+    rec.onend = () => { if (listeningRef.current && recRef.current) try { recRef.current.start(); } catch {} };
+    try { rec.start(); recRef.current = rec; listeningRef.current = true; setListening(true); } catch {}
+  }, []);
+
+  const stop = useCallback(() => {
+    listeningRef.current = false;
+    if (recRef.current) { recRef.current.onend = null; recRef.current.stop(); recRef.current = null; }
+    setListening(false); setLastHeard(null); setAmbiguity(null);
+  }, []);
+
+  const resolveAmbiguity = useCallback((letter) => { callbackRef.current?.(letter); setAmbiguity(null); }, []);
+  const toggle = useCallback((onLetter) => { if (listening) stop(); else start(onLetter); }, [listening, start, stop]);
+
+  return { listening, lastHeard, ambiguity, resolveAmbiguity, toggle, stop, supported: HAS_SPEECH };
+}
+
 // ─── Voice Hook ─────────────────────────────────────────────────────────────
 function useSpanishVoice() {
   const [voice, setVoice] = useState(null);
@@ -191,6 +316,34 @@ function FavButton({ word, isFavorite, toggleFavorite }) {
     <button onClick={(e) => { e.stopPropagation(); toggleFavorite(word); }}
       style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: "2px 4px", opacity: fav ? 1 : 0.4, transition: "opacity 0.2s", filter: fav ? "none" : "grayscale(1)" }}
       title={fav ? "Remove from favorites" : "Add to favorites"}>⭐</button>
+  );
+}
+
+function VoiceMicButton({ voice, onLetter, disabled, t }) {
+  if (!voice.supported) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <button onClick={() => { if (!disabled) voice.toggle(onLetter); }}
+        disabled={disabled}
+        style={{ width: 44, height: 44, borderRadius: "50%", border: voice.listening ? "2px solid #ef4444" : `2px solid ${t.border}`, background: voice.listening ? (t.bg === DARK_THEME.bg ? "#451a1a" : "#fef2f2") : t.surface, color: voice.listening ? "#ef4444" : t.textMuted, cursor: disabled ? "default" : "pointer", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: disabled ? 0.4 : 1, transition: "all 0.2s", boxShadow: voice.listening ? "0 0 0 4px rgba(239,68,68,0.2)" : "none", flexShrink: 0 }}
+        title={voice.listening ? "Stop voice input" : "Spell by voice"}>
+        {voice.listening ? "⏹" : "🎙"}
+      </button>
+      {voice.listening && voice.lastHeard && (
+        <p style={{ fontSize: 11, color: t.textMuted, textAlign: "center", maxWidth: 160 }}>
+          "{voice.lastHeard.transcript}" {voice.lastHeard.match ? `→ ${voice.lastHeard.match.letter}` : "→ ?"}
+        </p>
+      )}
+      {voice.ambiguity && (
+        <div style={{ display: "flex", gap: 4, alignItems: "center", padding: "4px 10px", background: "#fef3c7", borderRadius: 10 }}>
+          <span style={{ fontSize: 12, color: "#92400e" }}>Which?</span>
+          {voice.ambiguity.map(l => (
+            <button key={l} onClick={() => voice.resolveAmbiguity(l)}
+              style={{ padding: "3px 12px", borderRadius: 8, border: "1px solid #f59e0b", background: "white", cursor: "pointer", fontSize: 15, fontWeight: 700, fontFamily: "Georgia, serif" }}>{l}</button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -463,16 +616,20 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
   const [finished, setFinished] = useState(false);
   const [missed, setMissed] = useState([]);
   const inputRef = useRef(null);
+  const voice = useVoiceSpelling();
   const word = words[currentIndex];
+  const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
 
   const checkAnswer = useCallback(() => {
     if (!input.trim()) return;
-    const correct = input.trim().toLowerCase() === word.word.toLowerCase();
+    const cmp = compareSpelling(input, word.word);
+    const correct = cmp.exact || cmp.accentClose;
     if (correct) setScore(s => s + 1);
     else setMissed(prev => [...prev, word]);
-    setResult({ correct, answer: word.word });
+    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity });
     recordResult(word.word, correct);
-  }, [input, word, recordResult]);
+    voice.stop();
+  }, [input, word, recordResult, voice]);
 
   if (finished) {
     const pct = Math.round((score / ROUND_SIZE) * 100);
@@ -508,15 +665,18 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
         </div>
         <div style={{ marginBottom: 8 }}><DefinitionDisplay word={word} t={t} /></div>
         <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 16 }}>💡 {word.tip}</p>
-        <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
-          placeholder="Type the word here..." disabled={result !== null}
-          style={{ width: "100%", padding: "12px 14px", fontSize: 19, borderRadius: 10, border: `2px solid ${t.border}`, textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: t.surface, color: t.text }} autoFocus />
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
+            placeholder="Type or use mic to spell..." disabled={result !== null}
+            style={{ flex: 1, padding: "12px 14px", fontSize: 19, borderRadius: 10, border: `2px solid ${t.border}`, textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: t.surface, color: t.text }} autoFocus />
+          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} />
+        </div>
         {result === null && <AccentToolbar onChar={c => setInput(prev => prev + c)} inputRef={inputRef} t={t} />}
         {result === null ? (
           <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Check ✓</button>
         ) : (
           <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 18, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626" }}>{result.correct ? "✓ ¡Perfecto!" : `✗ Correct: ${result.answer}`}</p>
+            <p style={{ fontSize: 18, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626" }}>{result.correct ? (result.accentClose ? "✓ Correct letters! Accents need work." : "✓ ¡Perfecto!") : result.similarity >= 0.8 ? `Almost! (${Math.round(result.similarity * 100)}% match)` : `✗ Correct: ${result.answer}`}</p>
             {!result.correct && <p style={{ fontSize: 14, color: t.textMuted, marginTop: 4 }}>You wrote: <span style={{ textDecoration: "line-through" }}>{input}</span></p>}
             <button onClick={() => { if (currentIndex + 1 >= ROUND_SIZE) setFinished(true); else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); } }}
               style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? "See Results" : "Next →"}</button>
@@ -543,7 +703,9 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
   const [defLang, setDefLang] = useState("en");
   const [missed, setMissed] = useState([]);
   const inputRef = useRef(null);
+  const voice = useVoiceSpelling();
   const word = words[currentIndex];
+  const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
 
   useEffect(() => {
     if (ready && !result) {
@@ -559,16 +721,18 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
 
   const checkAnswer = useCallback(() => {
     if (!input.trim()) return;
-    const correct = input.trim().toLowerCase() === word.word.toLowerCase();
+    const cmp = compareSpelling(input, word.word);
+    const correct = cmp.exact || cmp.accentClose;
     if (correct) setScore(s => s + 1);
     else setMissed(prev => [...prev, word]);
-    setResult({ correct, answer: word.word });
+    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity });
     recordResult(word.word, correct);
-  }, [input, word, recordResult]);
+    voice.stop();
+  }, [input, word, recordResult, voice]);
 
   const nextWord = () => {
     if (currentIndex + 1 >= ROUND_SIZE) { setFinished(true); }
-    else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); setShowDef(false); setHasListened(false); }
+    else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); setShowDef(false); setHasListened(false); voice.stop(); }
   };
 
   if (finished) {
@@ -633,9 +797,12 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
           </p>
         )}
 
-        <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
-          placeholder={hasListened ? "Spell the word..." : "Press 🔊 first"} disabled={result !== null}
-          style={{ width: "100%", padding: "12px 14px", fontSize: 20, borderRadius: 10, border: result === null ? "2px solid #f59e0b" : result.correct ? "2px solid #10b981" : "2px solid #ef4444", textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: result === null ? t.surface : result.correct ? (isDark ? "#064e3b" : "#d1fae5") : (isDark ? "#7f1d1d" : "#fee2e2"), color: t.text }} autoFocus />
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
+            placeholder={hasListened ? "Type or use mic to spell..." : "Press 🔊 first"} disabled={result !== null}
+            style={{ flex: 1, padding: "12px 14px", fontSize: 20, borderRadius: 10, border: result === null ? "2px solid #f59e0b" : result.correct ? "2px solid #10b981" : "2px solid #ef4444", textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: result === null ? t.surface : result.correct ? (isDark ? "#064e3b" : "#d1fae5") : (isDark ? "#7f1d1d" : "#fee2e2"), color: t.text }} autoFocus />
+          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} />
+        </div>
 
         {result === null && <AccentToolbar onChar={c => setInput(prev => prev + c)} inputRef={inputRef} t={t} />}
 
@@ -643,7 +810,7 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
           <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>Check ✓</button>
         ) : (
           <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>{result.correct ? "✓ ¡Correcto!" : "✗ Incorrect"}</p>
+            <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>{result.correct ? (result.accentClose ? "✓ Right letters! Check accents." : "✓ ¡Correcto!") : result.similarity >= 0.8 ? `Almost! (${Math.round(result.similarity * 100)}% match)` : "✗ Incorrect"}</p>
             <p style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", color: t.text, marginBottom: 4 }}>{result.answer}</p>
             {!result.correct && <p style={{ fontSize: 14, color: t.textMuted }}>You wrote: <span style={{ textDecoration: "line-through", color: "#ef4444" }}>{input}</span></p>}
             <p style={{ fontSize: 13, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8, marginTop: 8 }}>💡 {word.tip}</p>
