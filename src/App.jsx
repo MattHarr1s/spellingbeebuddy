@@ -347,6 +347,32 @@ function VoiceMicButton({ voice, onLetter, disabled, t }) {
   );
 }
 
+const KOFI_URL = "https://ko-fi.com/YOURUSERNAME"; // TODO: Replace with your Ko-fi URL
+
+function SupportBanner({ t, compact }) {
+  return (
+    <div style={{ textAlign: "center", padding: compact ? "12px 8px" : "16px 12px", marginTop: compact ? 12 : 20, borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface }}>
+      {!compact && <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 8 }}>Enjoying this app? Help keep it free!</p>}
+      <a href={KOFI_URL} target="_blank" rel="noopener noreferrer"
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 10, border: "none", background: "#FF5E5B", color: "white", cursor: "pointer", fontSize: 14, fontWeight: 600, textDecoration: "none", transition: "opacity 0.2s" }}
+        onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+        ☕ Support on Ko-fi
+      </a>
+    </div>
+  );
+}
+
+function AdSlot({ t }) {
+  return (
+    <div style={{ textAlign: "center", padding: "16px 12px", marginTop: 16, borderRadius: 12, border: `1px dashed ${t.border}`, background: t.surface, minHeight: 90 }}>
+      {/* Google AdSense ad unit goes here. Replace this placeholder with your ad code:
+          <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXX" data-ad-slot="XXXXXXX" data-ad-format="auto" data-full-width-responsive="true"></ins>
+          <script>(adsbygoogle = window.adsbygoogle || []).push({});</script> */}
+      <p style={{ fontSize: 12, color: t.textMuted }}>Ad space</p>
+    </div>
+  );
+}
+
 function AccentToolbar({ onChar, inputRef, t }) {
   return (
     <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 10 }}>
@@ -551,6 +577,8 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
           )}
           <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>Back to Menu</button>
         </div>
+        <SupportBanner t={t} compact />
+        <AdSlot t={t} />
       </div>
     );
   }
@@ -645,6 +673,8 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
           )}
           <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>Back to Menu</button>
         </div>
+        <SupportBanner t={t} compact />
+        <AdSlot t={t} />
       </div>
     );
   }
@@ -753,6 +783,8 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
           )}
           <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>Back to Menu</button>
         </div>
+        <SupportBanner t={t} compact />
+        <AdSlot t={t} />
       </div>
     );
   }
@@ -1184,8 +1216,12 @@ export default function App() {
         })}
       </div>
 
+      {/* Support & Ads */}
+      <SupportBanner t={t} />
+      <AdSlot t={t} />
+
       {/* Footer */}
-      <div style={{ textAlign: "center", marginTop: 32, paddingBottom: 20, color: t.textMuted, fontSize: 12 }}>
+      <div style={{ textAlign: "center", marginTop: 20, paddingBottom: 20, color: t.textMuted, fontSize: 12 }}>
         <p>National Spanish Spelling Bee — July 10-11, 2026</p>
         <p>Albuquerque, NM • nationalspanishspellingbee.com</p>
       </div>
