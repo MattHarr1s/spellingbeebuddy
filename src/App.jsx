@@ -5,6 +5,7 @@ import { useFavorites } from "./hooks/useFavorites.js";
 import { useDarkMode, DARK_THEME, LIGHT_THEME } from "./hooks/useDarkMode.js";
 import { useKeyboard } from "./hooks/useKeyboard.js";
 import { useLocale } from "./hooks/useLocale.js";
+import { useAudio, VOICES } from "./hooks/useAudio.js";
 
 // ─── Category Configuration ─────────────────────────────────────────────────
 const CATEGORIES = {
@@ -325,35 +326,6 @@ function useVoiceSpelling() {
   return { listening, lastHeard, ambiguity, resolveAmbiguity, toggle, stop, supported: HAS_SPEECH };
 }
 
-// ─── Voice Hook ─────────────────────────────────────────────────────────────
-function useSpanishVoice() {
-  const [voice, setVoice] = useState(null);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    function pickVoice() {
-      const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find(v => v.lang === "es-MX")
-        || voices.find(v => v.lang === "es-ES")
-        || voices.find(v => v.lang.startsWith("es"));
-      setVoice(preferred || null);
-      setReady(true);
-    }
-    pickVoice();
-    window.speechSynthesis.onvoiceschanged = pickVoice;
-    return () => { window.speechSynthesis.onvoiceschanged = null; };
-  }, []);
-  const speak = useCallback((text, rateOverride) => {
-    window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = "es-MX";
-    if (voice) utt.voice = voice;
-    utt.rate = rateOverride !== undefined ? rateOverride : 0.8;
-    utt.pitch = 1;
-    window.speechSynthesis.speak(utt);
-  }, [voice]);
-  return { speak, ready };
-}
-
 // ─── Shared Components ──────────────────────────────────────────────────────
 function SpeedControl({ speed, setSpeed, t, compact, s }) {
   const labels = s ? s.speedLabels : { 0.4: "Very Slow", 0.6: "Slow", 0.8: "Normal", 1.0: "Fast", 1.2: "Faster" };
@@ -555,12 +527,30 @@ function LocaleToggle({ locale, toggleLocale }) {
   );
 }
 
-function ModeTopBar({ onBack, backLabel, speed, setSpeed, isDark, toggleDark, locale, toggleLocale, t, s }) {
+function VoiceSelector({ voiceId, setVoiceId, t, s }) {
+  const current = VOICES.find(v => v.id === voiceId) || VOICES[0];
+  const genderIcon = current.gender === "female" ? "♀" : current.gender === "male" ? "♂" : "⚥";
+  const cycle = () => {
+    const idx = VOICES.findIndex(v => v.id === voiceId);
+    setVoiceId(VOICES[(idx + 1) % VOICES.length].id);
+  };
+  return (
+    <button onClick={cycle} title={s ? s.voiceLabel : "Voice"}
+      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 8px", background: t.surface, borderRadius: 10, border: `1px solid ${t.border}`, color: t.text, cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>
+      <span>🎙</span>
+      <span style={{ fontWeight: 600 }}>{current.label}</span>
+      <span style={{ color: t.textMuted, fontSize: 10 }}>{genderIcon}</span>
+    </button>
+  );
+}
+
+function ModeTopBar({ onBack, backLabel, speed, setSpeed, isDark, toggleDark, locale, toggleLocale, t, s, voiceId, setVoiceId }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 6 }}>
       <button onClick={onBack} style={{ background: "none", border: "none", color: t.textMuted, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap", padding: "4px 0", flexShrink: 0 }}>← {backLabel || (s ? s.back : "Back")}</button>
       <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
         <SpeedControl speed={speed} setSpeed={setSpeed} t={t} compact s={s} />
+        {voiceId && setVoiceId && <VoiceSelector voiceId={voiceId} setVoiceId={setVoiceId} t={t} s={s} />}
         {locale && toggleLocale && <LocaleToggle locale={locale} toggleLocale={toggleLocale} />}
         <DarkModeToggle isDark={isDark} toggleDark={toggleDark} s={s} />
       </div>
@@ -569,7 +559,7 @@ function ModeTopBar({ onBack, backLabel, speed, setSpeed, isDark, toggleDark, lo
 }
 
 // ─── Study Mode (Flashcards) ────────────────────────────────────────────────
-function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, s, locale, toggleLocale }) {
+function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showTip, setShowTip] = useState(false);
   const [showDef, setShowDef] = useState(false);
@@ -621,7 +611,7 @@ function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, 
   if (!word) return <p style={{ color: t.text }}>{s ? s.noWordsInCategory : "No words in this category."}</p>;
   return (
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel={s ? s.categories : "Categories"} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} backLabel={s ? s.categories : "Categories"} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: catColor || "#3498db", height: 6, borderRadius: 8, width: `${progress}%`, transition: "width 0.3s" }} />
       </div>
@@ -680,7 +670,7 @@ function StudyMode({ words, category, catColor, onBack, speed, setSpeed, speak, 
 }
 
 // ─── Quiz Mode (Multiple Choice) ────────────────────────────────────────────
-function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale }) {
+function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const pool = wordPool || ALL_WORDS;
   const QUIZ_SIZE = Math.min(15, pool.length);
   const [questions, setQuestions] = useState([]);
@@ -733,7 +723,7 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
   const q = questions[currentQ];
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#3498db", height: 6, borderRadius: 8, width: `${((currentQ + 1) / questions.length) * 100}%`, transition: "width 0.3s" }} />
       </div>
@@ -784,7 +774,7 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
 }
 
 // ─── Spell Mode (Type with Hints) ───────────────────────────────────────────
-function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale }) {
+function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const pool = wordPool || ALL_WORDS;
   const ROUND_SIZE = Math.min(15, pool.length);
   const [words] = useState(() => shuffleArray(pool).slice(0, ROUND_SIZE));
@@ -835,7 +825,7 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
 
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#9b59b6", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / ROUND_SIZE) * 100}%`, transition: "width 0.3s" }} />
       </div>
@@ -873,7 +863,7 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
 }
 
 // ─── Listen Mode (Competition Style) ────────────────────────────────────────
-function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale }) {
+function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const pool = wordPool || ALL_WORDS;
   const ROUND_SIZE = Math.min(15, pool.length);
   const [words] = useState(() => shuffleArray(pool).slice(0, ROUND_SIZE));
@@ -890,6 +880,11 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
   const voice = useVoiceSpelling();
   const word = words[currentIndex];
   const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
+
+  // Prefetch upcoming words
+  useEffect(() => {
+    if (prefetch) prefetch(words.slice(currentIndex, currentIndex + 5));
+  }, [currentIndex, prefetch, words]);
 
   useEffect(() => {
     if (ready && !result) {
@@ -948,7 +943,7 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
 
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#e67e22", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / ROUND_SIZE) * 100}%`, transition: "width 0.3s" }} />
       </div>
@@ -1029,7 +1024,7 @@ function SearchBar({ value, onChange, t, s }) {
 const ALL_LETTERS = [...new Set(ALL_WORDS.map(w => w.word[0].toUpperCase()))].sort((a, b) => a.localeCompare(b, "es"));
 const CAT_ENTRIES = Object.entries(CATEGORIES);
 
-function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords, s, locale, toggleLocale }) {
+function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords, s, locale, toggleLocale, voiceId, setVoiceId }) {
   const [search, setSearch] = useState("");
   const [activeLetter, setActiveLetter] = useState(null);
   const [activeCategory, setActiveCategory] = useState(null);
@@ -1063,7 +1058,7 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel={s ? s.menu : "Menu"} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} backLabel={s ? s.menu : "Menu"} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <h2 style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 12, textAlign: "center" }}>📖 {s ? s.wordListTitle : "Word List"}</h2>
 
       {/* Search */}
@@ -1133,7 +1128,7 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
 }
 
 // ─── Progress Dashboard ─────────────────────────────────────────────────────
-function ProgressDashboard({ onBack, getOverallStats, getStreakStats, getCategoryStats, getRecentWords, resetProgress, onStartPractice, t, isDark, toggleDark, s, locale, toggleLocale, speed, setSpeed }) {
+function ProgressDashboard({ onBack, getOverallStats, getStreakStats, getCategoryStats, getRecentWords, resetProgress, onStartPractice, t, isDark, toggleDark, s, locale, toggleLocale, speed, setSpeed, voiceId, setVoiceId }) {
   const overall = getOverallStats();
   const streakStats = getStreakStats();
   const recentWords = getRecentWords();
@@ -1161,7 +1156,7 @@ function ProgressDashboard({ onBack, getOverallStats, getStreakStats, getCategor
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
 
       <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 20, textAlign: "center" }}>📊 {s.progressDashboard}</h2>
 
@@ -1314,10 +1309,10 @@ function CountdownBanner({ t, isDark, s }) {
 }
 
 // ─── About Page ──────────────────────────────────────────────────────────────
-function AboutPage({ onBack, t, isDark, toggleDark, s, locale, toggleLocale, speed, setSpeed }) {
+function AboutPage({ onBack, t, isDark, toggleDark, s, locale, toggleLocale, speed, setSpeed, voiceId, setVoiceId }) {
   return (
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
 
       {/* About eSpellñol */}
       <div style={{ textAlign: "center", marginBottom: 28 }}>
@@ -1371,7 +1366,7 @@ function AboutPage({ onBack, t, isDark, toggleDark, s, locale, toggleLocale, spe
 }
 
 // ─── Smart Review Mode (Spaced Repetition) ──────────────────────────────────
-function SmartReviewMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, dueWords, s, locale, toggleLocale }) {
+function SmartReviewMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, dueWords, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const ROUND_SIZE = dueWords.length;
   const [words] = useState(() => dueWords);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1385,6 +1380,11 @@ function SmartReviewMode({ onBack, speed, setSpeed, speak, ready, t, isDark, tog
   const voice = useVoiceSpelling();
   const word = words[currentIndex];
   const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
+
+  // Prefetch upcoming words
+  useEffect(() => {
+    if (prefetch) prefetch(words.slice(currentIndex, currentIndex + 5));
+  }, [currentIndex, prefetch, words]);
 
   useEffect(() => {
     if (ready && !result && word) {
@@ -1443,7 +1443,7 @@ function SmartReviewMode({ onBack, speed, setSpeed, speak, ready, t, isDark, tog
 
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#10b981", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / ROUND_SIZE) * 100}%`, transition: "width 0.3s" }} />
       </div>
@@ -1489,7 +1489,7 @@ function SmartReviewMode({ onBack, speed, setSpeed, speak, ready, t, isDark, tog
 }
 
 // ─── Smart Practice Mode (Test-Study-Test Cycle) ────────────────────────────
-function SmartPracticeMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, wordPool }) {
+function SmartPracticeMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, wordPool, voiceId, setVoiceId, prefetch }) {
   const [phase, setPhase] = useState("setup"); // setup | test | results | study | retest
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [testWords, setTestWords] = useState([]);
@@ -1504,6 +1504,11 @@ function SmartPracticeMode({ onBack, speed, setSpeed, speak, ready, t, isDark, t
   const voice = useVoiceSpelling();
   const word = testWords[currentIndex];
   const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
+
+  // Prefetch upcoming test words
+  useEffect(() => {
+    if (prefetch && testWords.length) prefetch(testWords.slice(currentIndex, currentIndex + 5));
+  }, [currentIndex, prefetch, testWords]);
 
   const startTest = (pool) => {
     const words = shuffleArray(pool).slice(0, Math.min(10, pool.length));
@@ -1556,7 +1561,7 @@ function SmartPracticeMode({ onBack, speed, setSpeed, speak, ready, t, isDark, t
     const catEntries = Object.entries(CATEGORIES);
     return (
       <div style={{ maxWidth: 500, margin: "0 auto" }}>
-        <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+        <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <p style={{ fontSize: 40, marginBottom: 8 }}>🧪</p>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 4 }}>{s.smartPractice}</h2>
@@ -1670,7 +1675,7 @@ function SmartPracticeMode({ onBack, speed, setSpeed, speak, ready, t, isDark, t
   if (!word) return null;
   return (
     <div style={{ maxWidth: 500, margin: "0 auto" }}>
-      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} voiceId={voiceId} setVoiceId={setVoiceId} />
       <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
         <div style={{ background: "#10b981", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / testWords.length) * 100}%`, transition: "width 0.3s" }} />
       </div>
@@ -1724,7 +1729,7 @@ export default function App() {
     try { return parseFloat(localStorage.getItem("sbb_speed")) || 0.8; } catch { return 0.8; }
   });
   const [search, setSearch] = useState("");
-  const { speak, ready } = useSpanishVoice();
+  const { speak, ready, voiceId, setVoiceId, prefetch } = useAudio();
   const { isDark, toggleDark } = useDarkMode();
   const { locale, toggleLocale, s } = useLocale();
   const { progress, recordResult, getWordStats, getCategoryStats, getMasteredCount, getOverallStats, getStreakStats, getRecentWords, getWordsForReview, getDueCount, getSrsStats, resetProgress } = useProgress();
@@ -1784,7 +1789,7 @@ export default function App() {
     setMode(modeName);
   };
 
-  const sharedProps = { speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale };
+  const sharedProps = { speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, voiceId, setVoiceId, prefetch };
 
   const wrapper = (children) => (
     <div style={{ minHeight: "100vh", background: t.bg, padding: "24px 16px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", transition: "background 0.3s" }}>
@@ -1811,7 +1816,7 @@ export default function App() {
   }
   if (mode === "wordlist") {
     return wrapper(
-      <WordListMode onBack={() => goBack()} speed={speed} setSpeed={setSpeed} speak={speak} t={t} isDark={isDark} toggleDark={toggleDark} isFavorite={isFavorite} toggleFavorite={toggleFavorite} getWordStats={getWordStats} onStudyWords={(words) => { setWordlistStudyWords(words); setMode("study-wordlist"); }} s={s} locale={locale} toggleLocale={toggleLocale} />
+      <WordListMode onBack={() => goBack()} speed={speed} setSpeed={setSpeed} speak={speak} t={t} isDark={isDark} toggleDark={toggleDark} isFavorite={isFavorite} toggleFavorite={toggleFavorite} getWordStats={getWordStats} onStudyWords={(words) => { setWordlistStudyWords(words); setMode("study-wordlist"); }} s={s} locale={locale} toggleLocale={toggleLocale} voiceId={voiceId} setVoiceId={setVoiceId} />
     );
   }
   if (mode === "study-wordlist" && wordlistStudyWords) {
@@ -1820,7 +1825,7 @@ export default function App() {
     );
   }
   if (mode === "dashboard") return wrapper(
-    <ProgressDashboard onBack={goBack} getOverallStats={getOverallStats} getStreakStats={getStreakStats} getCategoryStats={getCategoryStats} getRecentWords={getRecentWords} resetProgress={resetProgress} onStartPractice={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("listen"); }} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} />
+    <ProgressDashboard onBack={goBack} getOverallStats={getOverallStats} getStreakStats={getStreakStats} getCategoryStats={getCategoryStats} getRecentWords={getRecentWords} resetProgress={resetProgress} onStartPractice={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("listen"); }} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} voiceId={voiceId} setVoiceId={setVoiceId} />
   );
   if (mode === "quiz") return wrapper(<QuizMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
   if (mode === "spell") return wrapper(<SpellMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
@@ -1831,7 +1836,7 @@ export default function App() {
     return wrapper(<SmartReviewMode key={modeKey} onBack={goBack} dueWords={dueWordObjs} ready={ready} {...sharedProps} />);
   }
   if (mode === "smart-practice") return wrapper(<SmartPracticeMode key={modeKey} onBack={goBack} wordPool={customWordPool} ready={ready} {...sharedProps} />);
-  if (mode === "about") return wrapper(<AboutPage onBack={goBack} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} />);
+  if (mode === "about") return wrapper(<AboutPage onBack={goBack} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} voiceId={voiceId} setVoiceId={setVoiceId} />);
 
   return wrapper(
     <div style={{ maxWidth: 600, margin: "0 auto" }}>

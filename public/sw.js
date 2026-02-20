@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sbb-v1';
+const CACHE_NAME = 'sbb-v2';
 
 const APP_SHELL = [
   '/',

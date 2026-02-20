@@ -152,6 +152,13 @@ export const STRINGS = {
     spellByVoice: "Spell by voice",
     which: "Which?",
 
+    // Voice selector
+    voiceLabel: "Voice",
+    voiceFemale: "F",
+    voiceMale: "M",
+    voiceMixed: "Mix",
+    voiceRandom: "Random",
+
     // Dark mode
     switchToLight: "Switch to light mode",
     switchToDark: "Switch to dark mode",
@@ -427,6 +434,13 @@ export const STRINGS = {
     stopVoice: "Detener entrada de voz",
     spellByVoice: "Deletrear por voz",
     which: "¿Cuál?",
+
+    // Voice selector
+    voiceLabel: "Voz",
+    voiceFemale: "F",
+    voiceMale: "M",
+    voiceMixed: "Var",
+    voiceRandom: "Aleatorio",
 
     // Dark mode
     switchToLight: "Cambiar a modo claro",
