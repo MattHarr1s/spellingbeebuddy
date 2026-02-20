@@ -4,4 +4,4 @@ dist/
 .playwright-mcp/
 *.png
 *.zip
-public/audio/
+
