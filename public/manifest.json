@@ -1,7 +1,7 @@
 {
-  "name": "Spelling Bee Buddy — 2026 NSSB",
-  "short_name": "SpellBee",
-  "description": "Study app for the 2026 National Spanish Spelling Bee",
+  "name": "eSpellñol — 2026 NSSB",
+  "short_name": "eSpellñol",
+  "description": "eSpellñol — Study app for the 2026 National Spanish Spelling Bee",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#f59e0b",

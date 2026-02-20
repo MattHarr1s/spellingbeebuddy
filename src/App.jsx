@@ -101,6 +101,8 @@ Object.entries(CATEGORIES).forEach(([name, cat]) => {
 });
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
+const stripAccents = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 function shuffleArray(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -205,6 +207,73 @@ function compareSpelling(attempt, target) {
   const maxLen = Math.max(aN.length, tN.length);
   const similarity = maxLen > 0 ? Math.round((1 - dist / maxLen) * 100) / 100 : 0;
   return { exact: false, accentClose: false, similarity };
+}
+
+// ─── Error Classification & Diff Utilities ──────────────────────────────────
+function classifyErrors(attempt, correct) {
+  const a = attempt.trim().toLowerCase(), c = correct.toLowerCase();
+  if (a === c) return { types: [], details: [] };
+  const types = [], details = [];
+  const aN = stripAccents(a), cN = stripAccents(c);
+  // Accent error: base letters match but accents differ
+  if (aN === cN && a !== c) { types.push("accent"); details.push("Check accent marks"); }
+  // B/V swap
+  if (aN !== cN && aN.replace(/[bv]/g, "x") === cN.replace(/[bv]/g, "x")) { types.push("bv"); details.push("B and V swap"); }
+  // Missing H
+  if (aN !== cN && aN.replace(/h/g, "") === cN.replace(/h/g, "")) { types.push("h"); details.push("Missing or extra H"); }
+  // Double letter missed
+  const doubles = ["cc", "rr", "ll", "nn"];
+  for (const d of doubles) {
+    if (c.includes(d) && !a.includes(d) && a.includes(d[0])) { types.push("double"); details.push(`Double ${d} missed`); break; }
+    if (a.includes(d) && !c.includes(d)) { types.push("double"); details.push(`Extra double ${d}`); break; }
+  }
+  // Missing diéresis
+  if (c.includes("ü") && !a.includes("ü") && a.includes("u")) { types.push("dieresis"); details.push("Missing ü"); }
+  // Z/S confusion
+  if (aN !== cN && aN.replace(/[zs]/g, "x") === cN.replace(/[zs]/g, "x")) { types.push("zs"); details.push("Z/S confusion"); }
+  // C/S confusion
+  if (aN !== cN && aN.replace(/[cs]/g, "x") === cN.replace(/[cs]/g, "x")) { types.push("cs"); details.push("C/S confusion"); }
+  // Y/LL confusion
+  if (aN !== cN && aN.replace(/ll|y/g, "x") === cN.replace(/ll|y/g, "x")) { types.push("yll"); details.push("Y/LL confusion"); }
+  // Missing tilde
+  if (c.includes("ñ") && !a.includes("ñ") && a.includes("n")) { types.push("tilde"); details.push("Missing ñ"); }
+  // Generic fallback
+  if (types.length === 0) { types.push("other"); details.push("Spelling error"); }
+  return { types, details };
+}
+
+function computeCharDiff(attempt, correct) {
+  const a = attempt.trim().toLowerCase(), c = correct.toLowerCase();
+  // LCS-based alignment
+  const m = a.length, n = c.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === c[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  // Backtrack to produce alignment
+  const result = [];
+  let i = m, j = n;
+  const temp = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i - 1] === c[j - 1]) {
+      temp.push({ char: c[j - 1], expected: c[j - 1], status: "correct" });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      temp.push({ char: c[j - 1], expected: c[j - 1], status: "missing" });
+      j--;
+    } else {
+      temp.push({ char: a[i - 1], expected: "", status: "extra" });
+      i--;
+    }
+  }
+  temp.reverse();
+  // Merge: mark wrong chars (attempt char differs from expected)
+  for (const item of temp) {
+    if (item.status === "correct") result.push(item);
+    else if (item.status === "missing") result.push({ char: item.char, expected: item.char, status: "missing" });
+    else result.push({ char: item.char, expected: "", status: "extra" });
+  }
+  return result;
 }
 
 function useVoiceSpelling() {
@@ -381,6 +450,72 @@ function AccentToolbar({ onChar, inputRef, t }) {
         <button key={char} onClick={() => { onChar(char); inputRef.current?.focus(); }}
           style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 17, cursor: "pointer", fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>{char}</button>
       ))}
+    </div>
+  );
+}
+
+// ─── Error Feedback Components ───────────────────────────────────────────────
+const ERROR_TYPE_COLORS = {
+  accent: "#3498db", bv: "#9b59b6", h: "#e74c3c", double: "#2ecc71",
+  dieresis: "#f39c12", zs: "#e67e22", cs: "#16a085", yll: "#27ae60",
+  tilde: "#c0392b", other: "#95a5a6",
+};
+const ERROR_TYPE_KEYS = {
+  accent: "errorAccent", bv: "errorBV", h: "errorH", double: "errorDouble",
+  dieresis: "errorDieresis", zs: "errorZS", cs: "errorCS", yll: "errorYLL",
+  tilde: "errorTilde", other: "errorOther",
+};
+
+function SpellingDiff({ attempt, correct, t }) {
+  const diff = computeCharDiff(attempt, correct);
+  return (
+    <div style={{ display: "flex", justifyContent: "center", gap: 2, flexWrap: "wrap", marginBottom: 8 }}>
+      {diff.map((d, i) => (
+        <span key={i} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 28, height: 34, borderRadius: 6, fontSize: 18, fontFamily: "Georgia, serif", fontWeight: 600,
+          background: d.status === "correct" ? (t.bg === DARK_THEME.bg ? "#064e3b" : "#d1fae5")
+            : d.status === "missing" ? (t.bg === DARK_THEME.bg ? "#1e3a5f" : "#dbeafe")
+            : (t.bg === DARK_THEME.bg ? "#7f1d1d" : "#fee2e2"),
+          color: d.status === "correct" ? "#059669" : d.status === "missing" ? "#3b82f6" : "#dc2626",
+          border: d.status === "correct" ? "1px solid #10b981" : d.status === "missing" ? "1px solid #3b82f6" : "1px solid #ef4444",
+          textDecoration: d.status === "extra" ? "line-through" : "none",
+        }}>
+          {d.char}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ErrorTypeBadges({ errorTypes, s, compact }) {
+  if (!errorTypes || errorTypes.length === 0) return null;
+  const unique = [...new Set(errorTypes)];
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "center", marginTop: compact ? 4 : 8 }}>
+      {unique.map(type => (
+        <span key={type} style={{
+          padding: compact ? "2px 8px" : "3px 10px", borderRadius: 12,
+          fontSize: compact ? 11 : 12, fontWeight: 600,
+          background: (ERROR_TYPE_COLORS[type] || "#95a5a6") + "20",
+          color: ERROR_TYPE_COLORS[type] || "#95a5a6",
+          border: `1px solid ${(ERROR_TYPE_COLORS[type] || "#95a5a6")}40`,
+        }}>
+          {s[ERROR_TYPE_KEYS[type]] || type}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ErrorFeedback({ attempt, correct, errorTypes, t, s }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      <p style={{ fontSize: 12, color: t.textMuted, marginBottom: 4 }}>{s.yourAnswer}:</p>
+      <SpellingDiff attempt={attempt} correct={correct} t={t} />
+      <p style={{ fontSize: 12, color: t.textMuted, marginBottom: 2 }}>{s.correctSpelling}:</p>
+      <p style={{ fontSize: 22, fontWeight: 700, fontFamily: "Georgia, serif", color: "#059669", marginBottom: 6 }}>{correct}</p>
+      <ErrorTypeBadges errorTypes={errorTypes} s={s} />
     </div>
   );
 }
@@ -623,7 +758,10 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
                 setSelected(opt);
                 const correct = opt === q.correct;
                 if (correct) setScore(s => s + 1);
-                else setMissed(prev => [...prev, q]);
+                else {
+                  const errors = classifyErrors(opt, q.correct);
+                  setMissed(prev => [...prev, { ...q, selectedOption: opt, errorTypes: errors.types }]);
+                }
                 recordResult(q.word, correct);
               }}
                 style={{ padding: "14px 20px", borderRadius: 10, border, background: bg, color: t.text, cursor: selected !== null ? "default" : "pointer", fontSize: 18, fontFamily: "Georgia, serif", textAlign: "center", transition: "all 0.2s" }}>{opt}</button>
@@ -633,7 +771,8 @@ function QuizMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, recor
         {selected !== null && (
           <div style={{ marginTop: 16 }}>
             <p style={{ color: selected === q.correct ? "#059669" : "#dc2626", fontWeight: 600, marginBottom: 4 }}>{selected === q.correct ? (s ? s.correctExclaim : "✓ ¡Correcto!") : (s ? s.incorrectAnswer(q.correct) : `✗ Correct: ${q.correct}`)}</p>
-            <p style={{ fontSize: 13, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8 }}>💡 {q.tip}</p>
+            {selected !== q.correct && <ErrorTypeBadges errorTypes={classifyErrors(selected, q.correct).types} s={s} compact />}
+            <p style={{ fontSize: 13, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8, marginTop: 6 }}>💡 {q.tip}</p>
             <button onClick={() => { if (currentQ + 1 >= questions.length) setFinished(true); else { setCurrentQ(currentQ + 1); setSelected(null); } }}
               style={{ marginTop: 14, padding: "10px 28px", borderRadius: 10, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentQ + 1 >= questions.length ? (s ? s.seeResults : "See Results") : (s ? s.next : "Next →")}</button>
           </div>
@@ -665,8 +804,11 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
     const cmp = compareSpelling(input, word.word);
     const correct = cmp.exact || cmp.accentClose;
     if (correct) setScore(s => s + 1);
-    else setMissed(prev => [...prev, word]);
-    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity });
+    else {
+      const errors = classifyErrors(input, word.word);
+      setMissed(prev => [...prev, { ...word, attempt: input, errorTypes: errors.types }]);
+    }
+    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity, errorTypes: !correct && !(cmp.exact || cmp.accentClose) ? classifyErrors(input, word.word).types : [] });
     recordResult(word.word, correct);
     voice.stop();
   }, [input, word, recordResult, voice]);
@@ -719,7 +861,7 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
         ) : (
           <div style={{ marginTop: 16 }}>
             <p style={{ fontSize: 18, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626" }}>{result.correct ? (result.accentClose ? (s ? s.correctLettersAccents : "✓ Correct letters! Accents need work.") : (s ? s.perfecto : "✓ ¡Perfecto!")) : result.similarity >= 0.8 ? (s ? s.almost(Math.round(result.similarity * 100)) : `Almost! (${Math.round(result.similarity * 100)}% match)`) : (s ? s.incorrectAnswer(result.answer) : `✗ Correct: ${result.answer}`)}</p>
-            {!result.correct && <p style={{ fontSize: 14, color: t.textMuted, marginTop: 4 }}>{s ? s.youWrote : "You wrote"}: <span style={{ textDecoration: "line-through" }}>{input}</span></p>}
+            {!result.correct && <ErrorFeedback attempt={input} correct={result.answer} errorTypes={result.errorTypes} t={t} s={s} />}
             <button onClick={() => { if (currentIndex + 1 >= ROUND_SIZE) setFinished(true); else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); } }}
               style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? (s ? s.seeResults : "See Results") : (s ? s.next : "Next →")}</button>
           </div>
@@ -766,8 +908,11 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
     const cmp = compareSpelling(input, word.word);
     const correct = cmp.exact || cmp.accentClose;
     if (correct) setScore(s => s + 1);
-    else setMissed(prev => [...prev, word]);
-    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity });
+    else {
+      const errors = classifyErrors(input, word.word);
+      setMissed(prev => [...prev, { ...word, attempt: input, errorTypes: errors.types }]);
+    }
+    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity, errorTypes: !correct && !(cmp.exact || cmp.accentClose) ? classifyErrors(input, word.word).types : [] });
     recordResult(word.word, correct);
     voice.stop();
   }, [input, word, recordResult, voice]);
@@ -855,8 +1000,7 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
         ) : (
           <div style={{ marginTop: 16 }}>
             <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>{result.correct ? (result.accentClose ? (s ? s.rightLettersCheckAccents : "✓ Right letters! Check accents.") : (s ? s.correctExclaim : "✓ ¡Correcto!")) : result.similarity >= 0.8 ? (s ? s.almost(Math.round(result.similarity * 100)) : `Almost! (${Math.round(result.similarity * 100)}% match)`) : (s ? s.incorrect : "✗ Incorrect")}</p>
-            <p style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", color: t.text, marginBottom: 4 }}>{result.answer}</p>
-            {!result.correct && <p style={{ fontSize: 14, color: t.textMuted }}>{s ? s.youWrote : "You wrote"}: <span style={{ textDecoration: "line-through", color: "#ef4444" }}>{input}</span></p>}
+            {!result.correct ? <ErrorFeedback attempt={input} correct={result.answer} errorTypes={result.errorTypes} t={t} s={s} /> : <p style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", color: t.text, marginBottom: 4 }}>{result.answer}</p>}
             <p style={{ fontSize: 13, color: "#92400e", background: "#fef3c7", padding: "8px 12px", borderRadius: 8, marginTop: 8 }}>💡 {word.tip}</p>
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10 }}>
               <SpeakButton word={word.word} speak={speak} speed={speed} label={s ? s.hearIt : "Hear it"} t={t} s={s} />
@@ -884,7 +1028,6 @@ function SearchBar({ value, onChange, t, s }) {
 // ─── Word List Browser ──────────────────────────────────────────────────────
 const ALL_LETTERS = [...new Set(ALL_WORDS.map(w => w.word[0].toUpperCase()))].sort((a, b) => a.localeCompare(b, "es"));
 const CAT_ENTRIES = Object.entries(CATEGORIES);
-const stripAccents = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, isFavorite, toggleFavorite, getWordStats, onStudyWords, s, locale, toggleLocale }) {
   const [search, setSearch] = useState("");
@@ -989,6 +1132,588 @@ function WordListMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, i
   );
 }
 
+// ─── Progress Dashboard ─────────────────────────────────────────────────────
+function ProgressDashboard({ onBack, getOverallStats, getStreakStats, getCategoryStats, getRecentWords, resetProgress, onStartPractice, t, isDark, toggleDark, s, locale, toggleLocale, speed, setSpeed }) {
+  const overall = getOverallStats();
+  const streakStats = getStreakStats();
+  const recentWords = getRecentWords();
+  const hasProgress = overall.totalPracticed > 0;
+
+  const handleReset = () => {
+    if (window.confirm(s.resetConfirm)) resetProgress();
+  };
+
+  // 30-day heatmap data
+  const heatmapDays = [];
+  const dateSet = new Set(streakStats.studyDates);
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    const ds = d.toISOString().slice(0, 10);
+    heatmapDays.push({ date: ds, active: dateSet.has(ds), label: d.getDate() });
+  }
+
+  const statBox = (label, value, color) => (
+    <div style={{ flex: "1 1 45%", padding: "16px 12px", borderRadius: 12, background: t.card, border: `1px solid ${t.border}`, textAlign: "center" }}>
+      <p style={{ fontSize: 28, fontWeight: 700, color, marginBottom: 2 }}>{value}</p>
+      <p style={{ fontSize: 12, color: t.textMuted, fontWeight: 500 }}>{label}</p>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+      <ModeTopBar onBack={onBack} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 20, textAlign: "center" }}>📊 {s.progressDashboard}</h2>
+
+      {!hasProgress ? (
+        <div style={{ textAlign: "center", padding: "48px 20px" }}>
+          <p style={{ fontSize: 48, marginBottom: 12 }}>📚</p>
+          <p style={{ fontSize: 18, fontWeight: 600, color: t.text, marginBottom: 8 }}>{s.noProgressYet}</p>
+          <p style={{ fontSize: 14, color: t.textMuted, marginBottom: 24 }}>{s.startPracticingPrompt}</p>
+          <button onClick={onStartPractice} style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 16, fontWeight: 600 }}>🎧 {s.startPracticing}</button>
+        </div>
+      ) : (
+        <>
+          {/* Overall Stats Grid */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 24 }}>
+            {statBox(s.wordsPracticed, overall.totalPracticed, "#6366f1")}
+            {statBox(s.wordsMastered, overall.totalMastered, "#10b981")}
+            {statBox(s.totalAttempts, overall.totalAttempts, "#3498db")}
+            {statBox(s.overallAccuracy, `${overall.overallAccuracy}%`, overall.overallAccuracy >= 80 ? "#10b981" : overall.overallAccuracy >= 50 ? "#f59e0b" : "#ef4444")}
+          </div>
+
+          {/* Streak Card */}
+          <div style={{ padding: "18px", borderRadius: 12, background: t.card, border: `1px solid ${t.border}`, marginBottom: 24 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 14 }}>🔥 {s.studyStreak}</h3>
+            <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <p style={{ fontSize: 24, fontWeight: 700, color: streakStats.currentStreak > 0 ? "#f59e0b" : t.textMuted }}>{streakStats.currentStreak} {streakStats.currentStreak > 0 ? "🔥" : ""}</p>
+                <p style={{ fontSize: 12, color: t.textMuted }}>{s.currentStreak}</p>
+              </div>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <p style={{ fontSize: 24, fontWeight: 700, color: "#6366f1" }}>{streakStats.longestStreak}</p>
+                <p style={{ fontSize: 12, color: t.textMuted }}>{s.longestStreak}</p>
+              </div>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <p style={{ fontSize: 24, fontWeight: 700, color: "#3498db" }}>{streakStats.totalDays}</p>
+                <p style={{ fontSize: 12, color: t.textMuted }}>{s.daysStudied}</p>
+              </div>
+            </div>
+            {/* 30-day heatmap */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 3 }}>
+              {heatmapDays.map(d => (
+                <div key={d.date} title={d.date} style={{
+                  aspectRatio: "1", borderRadius: 3, background: d.active ? "#10b981" : (isDark ? "#333" : "#e5e7eb"),
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: d.active ? "white" : t.textMuted,
+                }}>{d.label}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Category Progress */}
+          <div style={{ padding: "18px", borderRadius: 12, background: t.card, border: `1px solid ${t.border}`, marginBottom: 24 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 14 }}>📚 {s.categoryProgress}</h3>
+            {Object.entries(CATEGORIES)
+              .map(([name, data]) => ({ name, data, stats: getCategoryStats(categoryWords[name] || []) }))
+              .sort((a, b) => b.stats.percent - a.stats.percent)
+              .map(({ name, data, stats }) => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 16, width: 24, textAlign: "center", flexShrink: 0 }}>{data.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.cat[name] || name}</span>
+                      <span style={{ fontSize: 11, color: t.textMuted, flexShrink: 0, marginLeft: 8 }}>{stats.mastered}/{stats.total}</span>
+                    </div>
+                    <div style={{ background: isDark ? "#333" : "#e5e7eb", borderRadius: 4, height: 6 }}>
+                      <div style={{ background: data.color, height: 6, borderRadius: 4, width: `${stats.percent}%`, transition: "width 0.5s" }} />
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: stats.percent >= 80 ? "#10b981" : stats.percent > 0 ? data.color : t.textMuted, width: 36, textAlign: "right", flexShrink: 0 }}>{stats.percent}%</span>
+                </div>
+              ))}
+          </div>
+
+          {/* Recent Activity */}
+          {recentWords.length > 0 && (
+            <div style={{ padding: "18px", borderRadius: 12, background: t.card, border: `1px solid ${t.border}`, marginBottom: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 14 }}>🕐 {s.recentActivity}</h3>
+              {recentWords.map(w => {
+                const total = w.correct + w.wrong;
+                const lastCorrect = w.correct > w.wrong;
+                return (
+                  <div key={w.word} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${t.border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 14, width: 20, textAlign: "center" }}>{lastCorrect ? "✓" : "✗"}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: t.text, fontFamily: "Georgia, serif" }}>{w.word}</span>
+                    </div>
+                    <span style={{ fontSize: 12, color: t.textMuted }}>{w.correct}/{total}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Reset */}
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <button onClick={handleReset} style={{ padding: "10px 24px", borderRadius: 8, border: `1px solid ${isDark ? "#555" : "#ddd"}`, background: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>{s.resetProgress}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Countdown Timer ─────────────────────────────────────────────────────────
+const NSSB_DATE = new Date("2026-07-10T09:00:00-06:00"); // July 10, 2026, 9 AM MDT
+const NSSB_URL = "https://nationalspanishspellingbee.com/";
+
+function useCountdown(targetDate) {
+  const [timeLeft, setTimeLeft] = useState(() => Math.max(0, targetDate - Date.now()));
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(Math.max(0, targetDate - Date.now())), 1000);
+    return () => clearInterval(id);
+  }, [targetDate]);
+  const days = Math.floor(timeLeft / 86400000);
+  const hours = Math.floor((timeLeft % 86400000) / 3600000);
+  const mins = Math.floor((timeLeft % 3600000) / 60000);
+  const secs = Math.floor((timeLeft % 60000) / 1000);
+  return { days, hours, mins, secs, isPast: timeLeft === 0 };
+}
+
+function CountdownBanner({ t, isDark, s }) {
+  const { days, hours, mins, secs, isPast } = useCountdown(NSSB_DATE);
+  if (isPast) return (
+    <div style={{ textAlign: "center", padding: "12px 16px", borderRadius: 12, background: "linear-gradient(135deg, #10b981, #059669)", color: "white", marginBottom: 20 }}>
+      <p style={{ fontSize: 14, fontWeight: 600 }}>🎉 {s.countdownPast}</p>
+    </div>
+  );
+  const box = (value, label) => (
+    <div style={{ textAlign: "center", flex: 1 }}>
+      <p style={{ fontSize: 24, fontWeight: 800, color: "#e67e22", fontVariantNumeric: "tabular-nums" }}>{String(value).padStart(2, "0")}</p>
+      <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: t.textMuted, fontWeight: 600 }}>{label}</p>
+    </div>
+  );
+  return (
+    <a href={NSSB_URL} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", marginBottom: 20 }}>
+      <div style={{ padding: "14px 16px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.card, textAlign: "center", cursor: "pointer", transition: "box-shadow 0.2s" }}
+        onMouseEnter={e => e.currentTarget.style.boxShadow = isDark ? "0 2px 12px rgba(0,0,0,0.2)" : "0 2px 12px rgba(0,0,0,0.08)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+        <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: "#e67e22", fontWeight: 700, marginBottom: 8 }}>{s.countdown}</p>
+        <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
+          {box(days, s.countdownDays)}
+          <span style={{ fontSize: 20, color: t.textMuted, alignSelf: "flex-start", marginTop: 2 }}>:</span>
+          {box(hours, s.countdownHours)}
+          <span style={{ fontSize: 20, color: t.textMuted, alignSelf: "flex-start", marginTop: 2 }}>:</span>
+          {box(mins, s.countdownMins)}
+          <span style={{ fontSize: 20, color: t.textMuted, alignSelf: "flex-start", marginTop: 2 }}>:</span>
+          {box(secs, s.countdownSecs)}
+        </div>
+        <p style={{ fontSize: 12, color: t.textMuted, marginTop: 6 }}>{s.nssbEvent2026}</p>
+      </div>
+    </a>
+  );
+}
+
+// ─── About Page ──────────────────────────────────────────────────────────────
+function AboutPage({ onBack, t, isDark, toggleDark, s, locale, toggleLocale, speed, setSpeed }) {
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+
+      {/* About eSpellñol */}
+      <div style={{ textAlign: "center", marginBottom: 28 }}>
+        <p style={{ fontSize: 48, marginBottom: 8 }}>🐝</p>
+        <h2 style={{ fontSize: 24, fontWeight: 700, color: t.text, marginBottom: 4 }}>{s.aboutEspellnol}</h2>
+      </div>
+
+      <div style={{ padding: "20px", borderRadius: 12, background: t.card, border: `1px solid ${t.border}`, marginBottom: 20 }}>
+        <p style={{ fontSize: 15, lineHeight: 1.7, color: t.text, marginBottom: 14 }}>{s.aboutStory}</p>
+        <p style={{ fontSize: 15, lineHeight: 1.7, color: t.text, marginBottom: 14 }}>{s.aboutMission}</p>
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: t.textMuted, fontStyle: "italic" }}>{s.aboutFree}</p>
+      </div>
+
+      {/* NSSB Info */}
+      <div style={{ padding: "20px", borderRadius: 12, background: t.card, border: `1px solid ${t.border}`, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: "#e67e2218", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>🏆</div>
+          <div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: t.text }}>{s.nssbFull}</h3>
+            <p style={{ fontSize: 12, color: "#e67e22", fontWeight: 600 }}>{s.nssbAcronym} · {s.nssbEligibility}</p>
+          </div>
+        </div>
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: t.text, marginBottom: 12 }}>{s.nssbAbout}</p>
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: t.text, marginBottom: 12 }}>{s.nssbHistory}</p>
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: t.text, marginBottom: 12 }}>{s.nssbHost}</p>
+        <p style={{ fontSize: 14, lineHeight: 1.7, color: t.textMuted, fontStyle: "italic", marginBottom: 16 }}>{s.nssbMission}</p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <a href={NSSB_URL} target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 20px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", fontSize: 14, fontWeight: 600, textDecoration: "none", cursor: "pointer", transition: "opacity 0.2s" }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+            🌐 {s.nssbWebsite} — nationalspanishspellingbee.com
+          </a>
+          <a href="https://nmabe.org/national-spanish-bee" target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 20px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, textDecoration: "none", cursor: "pointer" }}>
+            📚 ABE-NM — nmabe.org
+          </a>
+          <a href="https://www.youtube.com/playlist?list=PL-YRV1hOor0Wsk7r1ziDBdEl0pnLuz5Kh" target="_blank" rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 20px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, textDecoration: "none", cursor: "pointer" }}>
+            🎬 NSSB Competition Videos — YouTube
+          </a>
+        </div>
+      </div>
+
+      {/* Countdown */}
+      <CountdownBanner t={t} isDark={isDark} s={s} />
+
+      <p style={{ textAlign: "center", color: t.textMuted, fontSize: 13, marginTop: 12 }}>❤️ {s.madeWithLove}</p>
+    </div>
+  );
+}
+
+// ─── Smart Review Mode (Spaced Repetition) ──────────────────────────────────
+function SmartReviewMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, dueWords, s, locale, toggleLocale }) {
+  const ROUND_SIZE = dueWords.length;
+  const [words] = useState(() => dueWords);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState(null);
+  const [finished, setFinished] = useState(false);
+  const [promoted, setPromoted] = useState(0);
+  const [resetCount, setResetCount] = useState(0);
+  const [hasListened, setHasListened] = useState(false);
+  const inputRef = useRef(null);
+  const voice = useVoiceSpelling();
+  const word = words[currentIndex];
+  const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
+
+  useEffect(() => {
+    if (ready && !result && word) {
+      const timer = setTimeout(() => { speak(word.word, speed); setHasListened(true); }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [currentIndex, ready]);
+
+  const checkAnswer = useCallback(() => {
+    if (!input.trim()) return;
+    const cmp = compareSpelling(input, word.word);
+    const correct = cmp.exact || cmp.accentClose;
+    if (correct) setPromoted(p => p + 1);
+    else setResetCount(r => r + 1);
+    const errorTypes = !correct ? classifyErrors(input, word.word).types : [];
+    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity, errorTypes });
+    recordResult(word.word, correct);
+    voice.stop();
+  }, [input, word, recordResult, voice]);
+
+  const nextWord = () => {
+    if (currentIndex + 1 >= ROUND_SIZE) setFinished(true);
+    else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); setHasListened(false); voice.stop(); }
+  };
+
+  if (!word || ROUND_SIZE === 0) return (
+    <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center", padding: "48px 20px" }}>
+      <p style={{ fontSize: 48, marginBottom: 12 }}>🎉</p>
+      <p style={{ fontSize: 18, fontWeight: 600, color: t.text, marginBottom: 8 }}>{s.noWordsDue}</p>
+      <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>{s.backToMenu}</button>
+    </div>
+  );
+
+  if (finished) {
+    return (
+      <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
+        <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, color: t.text }}>{s.reviewComplete}</h2>
+        <div style={{ display: "flex", gap: 16, justifyContent: "center", marginBottom: 24 }}>
+          <div style={{ padding: "12px 20px", borderRadius: 12, background: isDark ? "#064e3b" : "#d1fae5", border: "1px solid #10b981" }}>
+            <p style={{ fontSize: 24, fontWeight: 700, color: "#059669" }}>⬆ {promoted}</p>
+            <p style={{ fontSize: 12, color: "#059669" }}>{s.wordsPromoted(promoted)}</p>
+          </div>
+          {resetCount > 0 && (
+            <div style={{ padding: "12px 20px", borderRadius: 12, background: isDark ? "#7f1d1d" : "#fee2e2", border: "1px solid #ef4444" }}>
+              <p style={{ fontSize: 24, fontWeight: 700, color: "#dc2626" }}>⬇ {resetCount}</p>
+              <p style={{ fontSize: 12, color: "#dc2626" }}>{s.wordsReset(resetCount)}</p>
+            </div>
+          )}
+        </div>
+        <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>{s.backToMenu}</button>
+        <SupportBanner t={t} compact s={s} />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 500, margin: "0 auto" }}>
+      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
+        <div style={{ background: "#10b981", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / ROUND_SIZE) * 100}%`, transition: "width 0.3s" }} />
+      </div>
+      <div style={{ background: t.card, borderRadius: 16, padding: "22px 18px", boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.3)" : "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 4, marginBottom: 2 }}>
+          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: "#10b981", fontWeight: 700 }}>🧠 {s.smartReview}</p>
+          <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
+        </div>
+        <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 12 }}>{s.wordNOfM(currentIndex + 1, ROUND_SIZE)}</p>
+
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <button onClick={() => { speak(word.word, speed); setHasListened(true); }}
+            style={{ width: 80, height: 80, borderRadius: "50%", border: "none", background: hasListened ? "#10b981" : "#34d399", color: "white", fontSize: 32, cursor: "pointer", boxShadow: "0 4px 20px rgba(16,185,129,0.35)", transition: "all 0.3s", display: "flex", alignItems: "center", justifyContent: "center" }}>🔊</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
+            placeholder={hasListened ? (s.typeOrMic) : (s.pressListenFirst)} disabled={result !== null}
+            style={{ flex: 1, padding: "12px 14px", fontSize: 20, borderRadius: 10, border: result === null ? "2px solid #34d399" : result.correct ? "2px solid #10b981" : "2px solid #ef4444", textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: result === null ? t.surface : result.correct ? (isDark ? "#064e3b" : "#d1fae5") : (isDark ? "#7f1d1d" : "#fee2e2"), color: t.text }} autoFocus />
+          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} s={s} />
+        </div>
+
+        {result === null && <AccentToolbar onChar={c => setInput(prev => prev + c)} inputRef={inputRef} t={t} />}
+
+        {result === null ? (
+          <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#10b981", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s.check}</button>
+        ) : (
+          <div style={{ marginTop: 16 }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>
+              {result.correct ? (s.correctExclaim) : (s.incorrect)}
+            </p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: result.correct ? "#059669" : "#dc2626", padding: "4px 12px", borderRadius: 8, background: result.correct ? (isDark ? "#064e3b" : "#ecfdf5") : (isDark ? "#7f1d1d" : "#fef2f2"), display: "inline-block", marginBottom: 8 }}>
+              {result.correct ? `⬆ ${s.boxPromoted}` : `⬇ ${s.boxReset}`}
+            </p>
+            {!result.correct && <ErrorFeedback attempt={input} correct={result.answer} errorTypes={result.errorTypes} t={t} s={s} />}
+            {result.correct && <p style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", color: t.text, marginBottom: 4 }}>{result.answer}</p>}
+            <button onClick={nextWord} style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#10b981", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= ROUND_SIZE ? (s.seeResults) : (s.next)}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Smart Practice Mode (Test-Study-Test Cycle) ────────────────────────────
+function SmartPracticeMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, wordPool }) {
+  const [phase, setPhase] = useState("setup"); // setup | test | results | study | retest
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [testWords, setTestWords] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState(null);
+  const [missed, setMissed] = useState([]); // { ...word, attempt, errorTypes }
+  const [score, setScore] = useState(0);
+  const [round, setRound] = useState(1);
+  const [hasListened, setHasListened] = useState(false);
+  const inputRef = useRef(null);
+  const voice = useVoiceSpelling();
+  const word = testWords[currentIndex];
+  const handleVoiceLetter = useCallback((letter) => { setInput(prev => prev + letter); }, []);
+
+  const startTest = (pool) => {
+    const words = shuffleArray(pool).slice(0, Math.min(10, pool.length));
+    setTestWords(words);
+    setCurrentIndex(0);
+    setInput("");
+    setResult(null);
+    setMissed([]);
+    setScore(0);
+    setHasListened(false);
+    setPhase("test");
+  };
+
+  useEffect(() => {
+    if ((phase === "test" || phase === "retest") && ready && !result && word) {
+      const timer = setTimeout(() => { speak(word.word, speed); setHasListened(true); }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [currentIndex, ready, phase]);
+
+  const checkAnswer = useCallback(() => {
+    if (!input.trim() || !word) return;
+    const cmp = compareSpelling(input, word.word);
+    const correct = cmp.exact || cmp.accentClose;
+    if (correct) setScore(s => s + 1);
+    else {
+      const errors = classifyErrors(input, word.word);
+      setMissed(prev => [...prev, { ...word, attempt: input, errorTypes: errors.types }]);
+    }
+    const errorTypes = !correct ? classifyErrors(input, word.word).types : [];
+    setResult({ correct, answer: word.word, accentClose: cmp.accentClose, similarity: cmp.similarity, errorTypes });
+    recordResult(word.word, correct);
+    voice.stop();
+  }, [input, word, recordResult, voice]);
+
+  const nextWord = () => {
+    if (currentIndex + 1 >= testWords.length) {
+      setPhase("results");
+    } else {
+      setCurrentIndex(currentIndex + 1);
+      setInput("");
+      setResult(null);
+      setHasListened(false);
+      voice.stop();
+    }
+  };
+
+  // SETUP phase
+  if (phase === "setup") {
+    const catEntries = Object.entries(CATEGORIES);
+    return (
+      <div style={{ maxWidth: 500, margin: "0 auto" }}>
+        <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <p style={{ fontSize: 40, marginBottom: 8 }}>🧪</p>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 4 }}>{s.smartPractice}</h2>
+          <p style={{ fontSize: 14, color: t.textMuted }}>{s.smartPracticeDesc}</p>
+        </div>
+        <p style={{ fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 8 }}>{s.selectCategory}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+          <button onClick={() => { setSelectedCategory(null); startTest(wordPool || ALL_WORDS); }}
+            style={{ padding: "14px 18px", borderRadius: 10, border: selectedCategory === null ? "2px solid #10b981" : `1px solid ${t.border}`, background: t.card, color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "left" }}>
+            🌐 {s.allCategories} <span style={{ color: t.textMuted, fontWeight: 400, fontSize: 13 }}>({(wordPool || ALL_WORDS).length})</span>
+          </button>
+          {catEntries.map(([name, data]) => {
+            const words = categoryWords[name] || [];
+            if (words.length === 0) return null;
+            return (
+              <button key={name} onClick={() => { setSelectedCategory(name); startTest(words); }}
+                style={{ padding: "12px 18px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.card, color: t.text, cursor: "pointer", fontSize: 14, textAlign: "left" }}>
+                {data.icon} {s.cat[name] || name} <span style={{ color: t.textMuted, fontSize: 12 }}>({words.length})</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // RESULTS phase
+  if (phase === "results") {
+    // Group errors by type
+    const errorGroups = {};
+    missed.forEach(m => {
+      (m.errorTypes || ["other"]).forEach(type => {
+        if (!errorGroups[type]) errorGroups[type] = [];
+        if (!errorGroups[type].find(w => w.word === m.word)) errorGroups[type].push(m);
+      });
+    });
+    const allCorrect = missed.length === 0;
+
+    return (
+      <div style={{ maxWidth: 500, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>{allCorrect ? "🎉" : "📊"}</div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4, color: t.text }}>
+          {allCorrect ? s.allWordsMastered : s.nCorrect(score, testWords.length)}
+        </h2>
+        {round > 1 && <p style={{ fontSize: 14, color: "#10b981", fontWeight: 600, marginBottom: 4 }}>{s.roundN(round)}</p>}
+        {allCorrect && round > 1 && <p style={{ fontSize: 16, color: "#059669", fontWeight: 600, marginBottom: 16 }}>{s.completedInRounds(round)}</p>}
+
+        {!allCorrect && Object.keys(errorGroups).length > 0 && (
+          <div style={{ textAlign: "left", marginTop: 16, marginBottom: 20 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.errorsByType}</h3>
+            {Object.entries(errorGroups).map(([type, words]) => (
+              <div key={type} style={{ marginBottom: 10, padding: "10px 14px", borderRadius: 10, background: t.card, border: `1px solid ${t.border}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                  <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: (ERROR_TYPE_COLORS[type] || "#95a5a6") + "20", color: ERROR_TYPE_COLORS[type] || "#95a5a6" }}>
+                    {s[ERROR_TYPE_KEYS[type]] || type}
+                  </span>
+                  <span style={{ fontSize: 12, color: t.textMuted }}>{words.length} word{words.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {words.map(w => (
+                    <span key={w.word} style={{ padding: "3px 8px", borderRadius: 6, fontSize: 13, fontFamily: "Georgia, serif", background: t.surface, border: `1px solid ${t.border}`, color: t.text }}>{w.word}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          {!allCorrect && (
+            <button onClick={() => {
+              setPhase("study");
+            }}
+              style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#10b981", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s.continueToStudy}</button>
+          )}
+          <button onClick={onBack} style={{ padding: "12px 24px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15 }}>{allCorrect ? s.backToMenu : s.exitPractice}</button>
+        </div>
+        {allCorrect && <SupportBanner t={t} compact s={s} />}
+      </div>
+    );
+  }
+
+  // STUDY phase — reuse StudyMode with missed words
+  if (phase === "study") {
+    const missedWordObjs = missed.map(m => ({ word: m.word, en: m.en, es: m.es, tip: m.tip }));
+    return (
+      <StudyMode
+        words={missedWordObjs}
+        category={s.studyMissedWords}
+        catColor="#10b981"
+        onBack={() => {
+          // Move to retest phase
+          const retestWords = missed.map(m => ({ word: m.word, en: m.en, es: m.es, tip: m.tip }));
+          setTestWords(shuffleArray(retestWords));
+          setCurrentIndex(0);
+          setInput("");
+          setResult(null);
+          setMissed([]);
+          setScore(0);
+          setRound(r => r + 1);
+          setHasListened(false);
+          setPhase("retest");
+        }}
+        speed={speed} setSpeed={setSpeed} speak={speak} t={t} isDark={isDark} toggleDark={toggleDark}
+        isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} locale={locale} toggleLocale={toggleLocale}
+      />
+    );
+  }
+
+  // TEST / RETEST phase
+  if (!word) return null;
+  return (
+    <div style={{ maxWidth: 500, margin: "0 auto" }}>
+      <ModeTopBar onBack={onBack} backLabel={s.menu} speed={speed} setSpeed={setSpeed} isDark={isDark} toggleDark={toggleDark} locale={locale} toggleLocale={toggleLocale} t={t} s={s} />
+      <div style={{ background: t.border, borderRadius: 8, height: 6, marginBottom: 24 }}>
+        <div style={{ background: "#10b981", height: 6, borderRadius: 8, width: `${((currentIndex + 1) / testWords.length) * 100}%`, transition: "width 0.3s" }} />
+      </div>
+      <div style={{ background: t.card, borderRadius: 16, padding: "22px 18px", boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.3)" : "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 4, marginBottom: 2 }}>
+          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.5, color: "#10b981", fontWeight: 700 }}>
+            🧪 {phase === "retest" ? s.retestPhase : s.diagnosticQuiz} {round > 1 ? `· ${s.roundN(round)}` : ""}
+          </p>
+          <FavButton word={word.word} isFavorite={isFavorite} toggleFavorite={toggleFavorite} s={s} />
+        </div>
+        <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 12 }}>{s.wordNOfM(currentIndex + 1, testWords.length)}</p>
+
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <button onClick={() => { speak(word.word, speed); setHasListened(true); }}
+            style={{ width: 80, height: 80, borderRadius: "50%", border: "none", background: hasListened ? "#10b981" : "#34d399", color: "white", fontSize: 32, cursor: "pointer", boxShadow: "0 4px 20px rgba(16,185,129,0.35)", transition: "all 0.3s", display: "flex", alignItems: "center", justifyContent: "center" }}>🔊</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") checkAnswer(); }}
+            placeholder={hasListened ? s.typeOrMic : s.pressListenFirst} disabled={result !== null}
+            style={{ flex: 1, padding: "12px 14px", fontSize: 20, borderRadius: 10, border: result === null ? "2px solid #34d399" : result.correct ? "2px solid #10b981" : "2px solid #ef4444", textAlign: "center", fontFamily: "Georgia, serif", boxSizing: "border-box", outline: "none", background: result === null ? t.surface : result.correct ? (isDark ? "#064e3b" : "#d1fae5") : (isDark ? "#7f1d1d" : "#fee2e2"), color: t.text }} autoFocus />
+          <VoiceMicButton voice={voice} onLetter={handleVoiceLetter} disabled={result !== null} t={t} s={s} />
+        </div>
+
+        {result === null && <AccentToolbar onChar={c => setInput(prev => prev + c)} inputRef={inputRef} t={t} />}
+
+        {result === null ? (
+          <button onClick={checkAnswer} style={{ marginTop: 16, padding: "12px 32px", borderRadius: 10, border: "none", background: "#10b981", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s.check}</button>
+        ) : (
+          <div style={{ marginTop: 16 }}>
+            <p style={{ fontSize: 20, fontWeight: 700, color: result.correct ? "#059669" : "#dc2626", marginBottom: 4 }}>
+              {result.correct ? (result.accentClose ? s.rightLettersCheckAccents : s.correctExclaim) : result.similarity >= 0.8 ? s.almost(Math.round(result.similarity * 100)) : s.incorrect}
+            </p>
+            {!result.correct ? <ErrorFeedback attempt={input} correct={result.answer} errorTypes={result.errorTypes} t={t} s={s} /> : <p style={{ fontSize: 26, fontWeight: 700, fontFamily: "Georgia, serif", color: t.text, marginBottom: 4 }}>{result.answer}</p>}
+            <button onClick={nextWord} style={{ marginTop: 12, padding: "10px 28px", borderRadius: 10, border: "none", background: "#10b981", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{currentIndex + 1 >= testWords.length ? s.seeResults : s.next}</button>
+          </div>
+        )}
+      </div>
+      <p style={{ textAlign: "center", color: t.textMuted, marginTop: 16, fontSize: 14 }}>{s.score}: {score}</p>
+    </div>
+  );
+}
+
 // ─── Main App ───────────────────────────────────────────────────────────────
 export default function App() {
   const [mode, setMode] = useState("menu");
@@ -1002,7 +1727,7 @@ export default function App() {
   const { speak, ready } = useSpanishVoice();
   const { isDark, toggleDark } = useDarkMode();
   const { locale, toggleLocale, s } = useLocale();
-  const { recordResult, getWordStats, getCategoryStats, getMasteredCount } = useProgress();
+  const { progress, recordResult, getWordStats, getCategoryStats, getMasteredCount, getOverallStats, getStreakStats, getRecentWords, getWordsForReview, getDueCount, getSrsStats, resetProgress } = useProgress();
   const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const t = isDark ? DARK_THEME : LIGHT_THEME;
 
@@ -1094,9 +1819,19 @@ export default function App() {
       <StudyMode words={wordlistStudyWords} category={s ? s.wordList : "Word List"} catColor="#6366f1" onBack={() => setMode("wordlist")} {...sharedProps} />
     );
   }
+  if (mode === "dashboard") return wrapper(
+    <ProgressDashboard onBack={goBack} getOverallStats={getOverallStats} getStreakStats={getStreakStats} getCategoryStats={getCategoryStats} getRecentWords={getRecentWords} resetProgress={resetProgress} onStartPractice={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("listen"); }} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} />
+  );
   if (mode === "quiz") return wrapper(<QuizMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
   if (mode === "spell") return wrapper(<SpellMode key={modeKey} onBack={goBack} wordPool={customWordPool} {...sharedProps} />);
   if (mode === "listen") return wrapper(<ListenMode key={modeKey} onBack={goBack} wordPool={customWordPool} ready={ready} {...sharedProps} />);
+  if (mode === "smart-review") {
+    const dueWordStrings = getWordsForReview();
+    const dueWordObjs = dueWordStrings.map(w => ALL_WORDS.find(aw => aw.word === w)).filter(Boolean);
+    return wrapper(<SmartReviewMode key={modeKey} onBack={goBack} dueWords={dueWordObjs} ready={ready} {...sharedProps} />);
+  }
+  if (mode === "smart-practice") return wrapper(<SmartPracticeMode key={modeKey} onBack={goBack} wordPool={customWordPool} ready={ready} {...sharedProps} />);
+  if (mode === "about") return wrapper(<AboutPage onBack={goBack} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} />);
 
   return wrapper(
     <div style={{ maxWidth: 600, margin: "0 auto" }}>
@@ -1116,6 +1851,23 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Countdown to NSSB */}
+      <CountdownBanner t={t} isDark={isDark} s={s} />
+
+      {/* Dashboard Button */}
+      <button onClick={() => setMode("dashboard")}
+        style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14, marginBottom: 20, transition: "box-shadow 0.2s" }}
+        onMouseEnter={e => e.currentTarget.style.boxShadow = isDark ? "0 2px 12px rgba(0,0,0,0.2)" : "0 2px 12px rgba(0,0,0,0.08)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+        <div style={{ width: 44, height: 44, borderRadius: 10, background: "#6366f118", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>📊</div>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.progressDashboard}</p>
+          <p style={{ color: t.textMuted, fontSize: 13 }}>
+            {(() => { const os = getOverallStats(); const ss = getStreakStats(); return os.totalPracticed > 0 ? `${os.totalPracticed} ${s.wordsPracticed.toLowerCase()} · ${os.totalMastered} ${s.wordsMastered.toLowerCase()}${ss.currentStreak > 0 ? ` · ${ss.currentStreak} ${ss.currentStreak === 1 ? s.day : s.days}` : ""}` : s.startPracticingPrompt; })()}
+          </p>
+        </div>
+        <span style={{ color: "#6366f1", fontSize: 14, flexShrink: 0 }}>→</span>
+      </button>
 
       {/* Voice Speed Control */}
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
@@ -1139,7 +1891,29 @@ export default function App() {
           📖 {s.wordListTitle}
           <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.textMuted, marginTop: 2 }}>{s.wordListDesc(ALL_WORDS.length)}</span>
         </button>
+        <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("smart-practice"); }}
+          style={{ flex: "1 1 100%", padding: "14px 16px", borderRadius: 12, border: "2px solid #10b981", background: isDark ? "#064e3b" : "#ecfdf5", color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
+          🧪 {s.smartPractice}
+          <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: "#059669", marginTop: 2 }}>{s.smartPracticeDesc}</span>
+        </button>
       </div>
+
+      {/* Smart Review (SRS) */}
+      {(() => {
+        const dueCount = getDueCount();
+        return dueCount > 0 ? (
+          <button onClick={() => { setModeKey(k => k + 1); setMode("smart-review"); }}
+            style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 12, border: "2px solid #10b981", background: isDark ? "#064e3b" : "#ecfdf5", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 20, transition: "box-shadow 0.2s" }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = "0 2px 12px rgba(16,185,129,0.2)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: "#10b98118", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>🧠</div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.smartReview}</p>
+              <p style={{ color: "#059669", fontSize: 13 }}>{s.wordsForReview(dueCount)}</p>
+            </div>
+            <span style={{ background: "#10b981", color: "white", padding: "4px 10px", borderRadius: 12, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{dueCount}</span>
+          </button>
+        ) : null;
+      })()}
 
       {/* Favorites Section */}
       {favWords.length > 0 && (
@@ -1224,6 +1998,8 @@ export default function App() {
                   style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#9b59b6", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>⌨️ {s.spell}</button>
                 <button onClick={() => startCategoryMode("listen", name)}
                   style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#e67e22", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎧 {s.listen}</button>
+                <button onClick={() => { setCustomWordPool(categoryWords[name] || []); setModeKey(k => k + 1); setMode("smart-practice"); }}
+                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid #10b981`, background: isDark ? "#064e3b" : "#ecfdf5", color: "#10b981", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🧪 {s.smartPractice}</button>
               </div>
             </div>
           );
@@ -1234,10 +2010,14 @@ export default function App() {
       <SupportBanner t={t} s={s} />
       <AdSlot t={t} s={s} />
 
-      {/* Footer */}
-      <div style={{ textAlign: "center", marginTop: 20, paddingBottom: 20, color: t.textMuted, fontSize: 12 }}>
-        <p>{s.footerEvent}</p>
-        <p>{s.footerLocation}</p>
+      {/* About & Footer */}
+      <div style={{ textAlign: "center", marginTop: 20, paddingBottom: 20 }}>
+        <button onClick={() => setMode("about")}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#e67e22", fontSize: 13, fontWeight: 600, marginBottom: 10, padding: "6px 12px" }}>
+          ℹ️ {s.aboutEspellnol}
+        </button>
+        <p style={{ color: t.textMuted, fontSize: 12 }}>{s.footerEvent}</p>
+        <p style={{ color: t.textMuted, fontSize: 12 }}>{s.footerLocation}</p>
       </div>
     </div>
   );
