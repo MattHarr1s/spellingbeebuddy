@@ -392,7 +392,7 @@ function VoiceMicButton({ voice, onLetter, disabled, t, s }) {
   );
 }
 
-const KOFI_URL = "https://ko-fi.com/YOURUSERNAME"; // TODO: Replace with your Ko-fi URL
+const KOFI_URL = "https://ko-fi.com/espellnol";
 
 function SupportBanner({ t, compact, s }) {
   return (
@@ -946,7 +946,7 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
 }
 
 // ─── Listen Mode (Competition Style) ────────────────────────────────────────
-function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
+function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const pool = wordPool || ALL_WORDS;
   const ROUND_SIZE = Math.min(15, pool.length);
   const [words] = useState(() => shuffleArray(pool).slice(0, ROUND_SIZE));
@@ -978,8 +978,8 @@ function ListenMode({ onBack, speed, setSpeed, speak, ready, t, isDark, toggleDa
 
   const handleListen = () => { speak(word.word, speed); setHasListened(true); setTimeout(() => inputRef.current?.focus(), 100); };
   const handleListenSlow = () => { speak(word.word, Math.max(0.3, speed * 0.5)); setHasListened(true); };
-  const handleDefinition = () => { setShowDef(true); speak(defLang === "es" ? (word.es || word.en) : word.en, speed); };
-  const handleSentence = () => { speak(`${word.word}. ${defLang === "es" ? (word.es || word.en) : word.en}. ${word.word}.`, speed); };
+  const handleDefinition = () => { setShowDef(true); speakDef(word.word, defLang, speed); };
+  const handleSentence = () => { speakDef(word.word, defLang, speed); };
 
   const checkAnswer = useCallback(() => {
     if (!input.trim()) return;
@@ -1812,7 +1812,7 @@ export default function App() {
     try { return parseFloat(localStorage.getItem("sbb_speed")) || 0.8; } catch { return 0.8; }
   });
   const [search, setSearch] = useState("");
-  const { speak, ready, voiceId, setVoiceId, prefetch } = useAudio();
+  const { speak, speakDef, ready, voiceId, setVoiceId, prefetch } = useAudio();
   const { isDark, toggleDark } = useDarkMode();
   const { locale, toggleLocale, s } = useLocale();
   const { progress, recordResult, getWordStats, getCategoryStats, getMasteredCount, getOverallStats, getStreakStats, getRecentWords, getWordsForReview, getDueCount, getSrsStats, resetProgress } = useProgress();
@@ -1872,7 +1872,7 @@ export default function App() {
     setMode(modeName);
   };
 
-  const sharedProps = { speed, setSpeed, speak, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, voiceId, setVoiceId, prefetch };
+  const sharedProps = { speed, setSpeed, speak, speakDef, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, voiceId, setVoiceId, prefetch };
 
   const wrapper = (children) => (
     <div style={{ minHeight: "100vh", background: t.bg, padding: "24px 16px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", transition: "background 0.3s" }}>

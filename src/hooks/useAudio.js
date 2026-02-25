@@ -57,10 +57,13 @@ function getAudioKey(voiceId, word) {
   return `${voiceId}:${word}`;
 }
 
-function getOrCreateAudio(voiceId, word) {
-  const key = getAudioKey(voiceId, word);
+function getOrCreateAudio(voiceId, word, subDir) {
+  const path = subDir
+    ? `/audio/${voiceId}/${subDir}/${encodeURIComponent(word)}.mp3`
+    : `/audio/${voiceId}/${encodeURIComponent(word)}.mp3`;
+  const key = `${voiceId}:${subDir || "word"}:${word}`;
   if (audioCache.has(key)) return audioCache.get(key);
-  const audio = new Audio(`/audio/${voiceId}/${encodeURIComponent(word)}.mp3`);
+  const audio = new Audio(path);
   audio.preload = "auto";
   audioCache.set(key, audio);
   return audio;
@@ -127,6 +130,38 @@ export function useAudio() {
     }
   }, [voiceId, speakWeb]);
 
+  // Speak a definition using pre-generated audio, keyed by word + language
+  const speakDef = useCallback((wordKey, lang, rateOverride) => {
+    // Stop any current playback
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+
+    const word = wordKey.toLowerCase();
+    const rate = rateOverride !== undefined ? rateOverride : 0.8;
+    const subDir = `def-${lang === "es" ? "es" : "en"}`;
+
+    if (WORD_SET.has(word)) {
+      const effectiveVoice = voiceId === "random" ? pickRandomVoice() : voiceId;
+      const audio = getOrCreateAudio(effectiveVoice, word, subDir);
+
+      audio.playbackRate = rate;
+      audio.currentTime = 0;
+      currentAudioRef.current = audio;
+
+      audio.play().catch(() => {
+        // MP3 failed to load — fall back to Web Speech API
+        currentAudioRef.current = null;
+        speakWeb(wordKey, rate);
+      });
+    } else {
+      speakWeb(wordKey, rate);
+    }
+  }, [voiceId, speakWeb]);
+
   // Prefetch upcoming words into the audio cache
   const prefetch = useCallback((wordArray) => {
     if (!wordArray || !wordArray.length) return;
@@ -149,6 +184,7 @@ export function useAudio() {
 
   return {
     speak,
+    speakDef,
     ready,
     voiceId,
     setVoiceId,
