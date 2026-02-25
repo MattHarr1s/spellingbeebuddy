@@ -281,6 +281,35 @@ export const STRINGS = {
     countdownMins: "min",
     countdownSecs: "sec",
     countdownPast: "The 2026 NSSB has begun!",
+
+    // Onboarding
+    welcomeTitle: "Welcome to eSpellñol!",
+    welcomeSubtitle: "Practice for the National Spanish Spelling Bee",
+    welcomeStart: "Start Practicing",
+    welcomeExplore: "Browse all study modes",
+    welcomeBackTitle: (n) => `Welcome back! ${n} word${n !== 1 ? "s" : ""} ready for review.`,
+    welcomeBackStart: "Start Review",
+    welcomeBackSkip: "Skip",
+
+    // Mode grouping
+    competitionPractice: "Competition Practice",
+    competitionPracticeDesc: "Practice like the real Bee",
+    studyAndReview: "Study & Review",
+    tools: "Tools",
+    recommended: "Recommended",
+    difficulty: { easy: "Easy", medium: "Medium", hard: "Hard" },
+    multipleChoiceDesc: "Pick the correct spelling from 4 options",
+    typeWithHintsDesc: "Spell with the definition and tip visible",
+
+    // Contextual hints
+    hintAccentToolbar: "Tap these for accent marks: á é í ó ú ü ñ",
+    hintErrorFeedback: "Color-coded diff shows exactly what went wrong",
+    hintSmartReview: "These words are ready for review — practicing now helps you remember!",
+    hintFavorites: "Your starred words appear here for quick review",
+
+    // Categories
+    showCategories: "Study by Category",
+    hideCategories: "Hide Categories",
   },
 
   es: {
@@ -564,5 +593,34 @@ export const STRINGS = {
     countdownMins: "min",
     countdownSecs: "seg",
     countdownPast: "¡El NSSB 2026 ha comenzado!",
+
+    // Onboarding
+    welcomeTitle: "¡Bienvenido a eSpellñol!",
+    welcomeSubtitle: "Practica para el National Spanish Spelling Bee",
+    welcomeStart: "Empezar a practicar",
+    welcomeExplore: "Ver todos los modos de estudio",
+    welcomeBackTitle: (n) => `¡Hola de nuevo! ${n} palabra${n !== 1 ? "s" : ""} lista${n !== 1 ? "s" : ""} para repasar.`,
+    welcomeBackStart: "Empezar repaso",
+    welcomeBackSkip: "Omitir",
+
+    // Mode grouping
+    competitionPractice: "Práctica de competencia",
+    competitionPracticeDesc: "Practica como en el concurso real",
+    studyAndReview: "Estudio y repaso",
+    tools: "Herramientas",
+    recommended: "Recomendado",
+    difficulty: { easy: "Fácil", medium: "Medio", hard: "Difícil" },
+    multipleChoiceDesc: "Elige el deletreo correcto de 4 opciones",
+    typeWithHintsDesc: "Deletrea con la definición y pista visible",
+
+    // Contextual hints
+    hintAccentToolbar: "Toca estos para acentos: á é í ó ú ü ñ",
+    hintErrorFeedback: "Los colores muestran exactamente qué salió mal",
+    hintSmartReview: "¡Estas palabras están listas para repasar — practicarlas ahora ayuda a recordar!",
+    hintFavorites: "Tus palabras favoritas aparecen aquí para repasar rápido",
+
+    // Categories
+    showCategories: "Estudiar por categoría",
+    hideCategories: "Ocultar categorías",
   },
 };

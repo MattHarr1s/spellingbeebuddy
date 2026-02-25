@@ -6,6 +6,7 @@ import { useDarkMode, DARK_THEME, LIGHT_THEME } from "./hooks/useDarkMode.js";
 import { useKeyboard } from "./hooks/useKeyboard.js";
 import { useLocale } from "./hooks/useLocale.js";
 import { useAudio, VOICES } from "./hooks/useAudio.js";
+import { useFirstVisit, hasBeenOnboarded, markOnboarded } from "./hooks/useFirstVisit.js";
 
 // ─── Category Configuration ─────────────────────────────────────────────────
 const CATEGORIES = {
@@ -356,7 +357,9 @@ function FavButton({ word, isFavorite, toggleFavorite, s }) {
   const fav = isFavorite(word);
   return (
     <button onClick={(e) => { e.stopPropagation(); toggleFavorite(word); }}
-      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: "2px 4px", opacity: fav ? 1 : 0.4, transition: "opacity 0.2s", filter: fav ? "none" : "grayscale(1)" }}
+      aria-label={fav ? (s ? s.removeFromFavorites : "Remove from favorites") : (s ? s.addToFavorites : "Add to favorites")}
+      aria-pressed={fav}
+      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: "8px", minWidth: 36, minHeight: 36, opacity: fav ? 1 : 0.4, transition: "opacity 0.2s", filter: fav ? "none" : "grayscale(1)", display: "flex", alignItems: "center", justifyContent: "center" }}
       title={fav ? (s ? s.removeFromFavorites : "Remove from favorites") : (s ? s.addToFavorites : "Add to favorites")}>⭐</button>
   );
 }
@@ -420,7 +423,8 @@ function AccentToolbar({ onChar, inputRef, t }) {
     <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 10 }}>
       {["á", "é", "í", "ó", "ú", "ü", "ñ"].map(char => (
         <button key={char} onClick={() => { onChar(char); inputRef.current?.focus(); }}
-          style={{ width: 36, height: 36, borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 17, cursor: "pointer", fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>{char}</button>
+          aria-label={`Insert ${char}`}
+          style={{ width: 44, height: 44, borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 18, cursor: "pointer", fontFamily: "Georgia, serif", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>{char}</button>
       ))}
     </div>
   );
@@ -512,7 +516,8 @@ function DefinitionDisplay({ word, t, s }) {
 function DarkModeToggle({ isDark, toggleDark, s }) {
   return (
     <button onClick={toggleDark}
-      style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "4px 8px", borderRadius: 8, transition: "all 0.2s" }}
+      aria-label={isDark ? (s ? s.switchToLight : "Switch to light mode") : (s ? s.switchToDark : "Switch to dark mode")}
+      style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "10px", minWidth: 44, minHeight: 44, borderRadius: 8, transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center" }}
       title={isDark ? (s ? s.switchToLight : "Switch to light mode") : (s ? s.switchToDark : "Switch to dark mode")}>{isDark ? "☀️" : "🌙"}</button>
   );
 }
@@ -520,7 +525,8 @@ function DarkModeToggle({ isDark, toggleDark, s }) {
 function LocaleToggle({ locale, toggleLocale }) {
   return (
     <button onClick={toggleLocale}
-      style={{ background: "none", border: "none", fontSize: 14, cursor: "pointer", padding: "4px 8px", borderRadius: 8, transition: "all 0.2s" }}
+      aria-label={locale === "en" ? "Cambiar a español" : "Switch to English"}
+      style={{ background: "none", border: "none", fontSize: 14, cursor: "pointer", padding: "10px", minWidth: 44, minHeight: 44, borderRadius: 8, transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center" }}
       title={locale === "en" ? "Cambiar a español" : "Switch to English"}>
       {locale === "es" ? "🇺🇸 EN" : "🇲🇽 ES"}
     </button>
@@ -553,6 +559,83 @@ function ModeTopBar({ onBack, backLabel, speed, setSpeed, isDark, toggleDark, lo
         {voiceId && setVoiceId && <VoiceSelector voiceId={voiceId} setVoiceId={setVoiceId} t={t} s={s} />}
         {locale && toggleLocale && <LocaleToggle locale={locale} toggleLocale={toggleLocale} />}
         <DarkModeToggle isDark={isDark} toggleDark={toggleDark} s={s} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Contextual Hint (First-Use Tooltip) ─────────────────────────────────────
+function ContextualHint({ hintKey, message, position = "below", t, children }) {
+  const [seen, markSeen] = useFirstVisit(hintKey);
+  const [visible, setVisible] = useState(!seen);
+  const [coords, setCoords] = useState(null);
+  const targetRef = useRef(null);
+  const prefersReducedMotion = useRef(typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+
+  useEffect(() => {
+    if (!visible || seen) return;
+    const el = targetRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setCoords({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
+    const timer = setTimeout(() => { setVisible(false); markSeen(); }, 8000);
+    return () => clearTimeout(timer);
+  }, [visible, seen, markSeen]);
+
+  const dismiss = () => { setVisible(false); markSeen(); };
+
+  return (
+    <div ref={targetRef} style={{ position: "relative" }}>
+      {children}
+      {visible && !seen && coords && (
+        <div onClick={dismiss} style={{
+          position: "fixed", top: position === "above" ? "auto" : coords.top, bottom: position === "above" ? (window.innerHeight - coords.top + 60) : "auto",
+          left: Math.max(12, Math.min(coords.left - 140, window.innerWidth - 292)),
+          width: 280, padding: "12px 16px", borderRadius: 12, background: t.bg === "#0f172a" ? "#1e293b" : "#1e293b", color: "white",
+          fontSize: 13, lineHeight: 1.5, boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 9999,
+          animation: prefersReducedMotion.current ? "none" : "hintFadeIn 0.2s ease-out",
+          cursor: "pointer",
+        }}>
+          <span>{message}</span>
+          <span style={{ display: "block", fontSize: 11, color: "#94a3b8", marginTop: 4 }}>Tap to dismiss</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Welcome Screen (First Visit) ───────────────────────────────────────────
+function WelcomeScreen({ onStart, onExplore, t, isDark, s }) {
+  return (
+    <div style={{ maxWidth: 440, margin: "0 auto", textAlign: "center", padding: "60px 20px" }}>
+      <p style={{ fontSize: 64, marginBottom: 16 }}>🐝</p>
+      <h1 style={{ fontSize: 28, fontWeight: 700, color: t.text, marginBottom: 8 }}>{s.welcomeTitle}</h1>
+      <p style={{ fontSize: 16, color: t.textMuted, marginBottom: 36, lineHeight: 1.6 }}>{s.welcomeSubtitle}</p>
+      <button onClick={onStart}
+        style={{ width: "100%", padding: "18px 24px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #e67e22, #f39c12)", color: "white", cursor: "pointer", fontSize: 18, fontWeight: 700, boxShadow: "0 4px 20px rgba(230,126,34,0.35)", marginBottom: 14 }}>
+        🎧 {s.welcomeStart}
+      </button>
+      <button onClick={onExplore}
+        style={{ width: "100%", padding: "14px 24px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, cursor: "pointer", fontSize: 15 }}>
+        {s.welcomeExplore} →
+      </button>
+    </div>
+  );
+}
+
+// ─── Welcome Back Prompt (Return Visitors with SRS Due) ──────────────────────
+function WelcomeBackPrompt({ dueCount, onStartReview, onSkip, t, isDark, s }) {
+  if (dueCount <= 0) return null;
+  return (
+    <div style={{ padding: "14px 18px", borderRadius: 12, border: "2px solid #10b981", background: isDark ? "#064e3b" : "#ecfdf5", marginBottom: 20, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: t.text }}>{s.welcomeBackTitle(dueCount)}</p>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onStartReview}
+          style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "#10b981", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{s.welcomeBackStart}</button>
+        <button onClick={onSkip}
+          style={{ padding: "8px 16px", borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, cursor: "pointer", fontSize: 13 }}>{s.welcomeBackSkip}</button>
       </div>
     </div>
   );
@@ -1838,8 +1921,21 @@ export default function App() {
   if (mode === "smart-practice") return wrapper(<SmartPracticeMode key={modeKey} onBack={goBack} wordPool={customWordPool} ready={ready} {...sharedProps} />);
   if (mode === "about") return wrapper(<AboutPage onBack={goBack} t={t} isDark={isDark} toggleDark={toggleDark} s={s} locale={locale} toggleLocale={toggleLocale} speed={speed} setSpeed={setSpeed} voiceId={voiceId} setVoiceId={setVoiceId} />);
 
+  // Phase 1: First-visit welcome screen
+  if (!hasBeenOnboarded() && masteredCount === 0 && getOverallStats().totalPracticed === 0) {
+    return wrapper(
+      <WelcomeScreen
+        t={t} isDark={isDark} s={s}
+        onStart={() => { markOnboarded(); setCustomWordPool(null); setModeKey(k => k + 1); setMode("listen"); }}
+        onExplore={() => { markOnboarded(); }}
+      />
+    );
+  }
+
+  const dueCount = getDueCount();
+
   return wrapper(
-    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+    <main style={{ maxWidth: 600, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 2, marginBottom: -20 }}>
         <LocaleToggle locale={locale} toggleLocale={toggleLocale} />
@@ -1851,50 +1947,45 @@ export default function App() {
         <p style={{ fontSize: 15, color: t.textMuted }}>{s.appSubtitle}</p>
         <p style={{ fontSize: 13, color: t.textMuted, marginTop: 4 }}>{s.wordsAndMastered(ALL_WORDS.length, masteredCount)}</p>
         {masteredCount > 0 && (
-          <div style={{ background: t.border, borderRadius: 8, height: 6, maxWidth: 200, margin: "8px auto 0" }}>
+          <div role="progressbar" aria-valuenow={masteredCount} aria-valuemin={0} aria-valuemax={ALL_WORDS.length} aria-label={s.wordsAndMastered(ALL_WORDS.length, masteredCount)} style={{ background: t.border, borderRadius: 8, height: 6, maxWidth: 200, margin: "8px auto 0" }}>
             <div style={{ background: "#10b981", height: 6, borderRadius: 8, width: `${Math.round((masteredCount / ALL_WORDS.length) * 100)}%`, transition: "width 0.5s" }} />
           </div>
         )}
       </div>
 
+      {/* Phase 4: Welcome-back prompt for return visitors */}
+      <WelcomeBackPrompt dueCount={dueCount} t={t} isDark={isDark} s={s}
+        onStartReview={() => { setModeKey(k => k + 1); setMode("smart-review"); }}
+        onSkip={() => {}} />
+
       {/* Countdown to NSSB */}
       <CountdownBanner t={t} isDark={isDark} s={s} />
 
       {/* Dashboard Button */}
-      <button onClick={() => setMode("dashboard")}
-        style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14, marginBottom: 20, transition: "box-shadow 0.2s" }}
-        onMouseEnter={e => e.currentTarget.style.boxShadow = isDark ? "0 2px 12px rgba(0,0,0,0.2)" : "0 2px 12px rgba(0,0,0,0.08)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
-        <div style={{ width: 44, height: 44, borderRadius: 10, background: "#6366f118", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>📊</div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.progressDashboard}</p>
-          <p style={{ color: t.textMuted, fontSize: 13 }}>
-            {(() => { const os = getOverallStats(); const ss = getStreakStats(); return os.totalPracticed > 0 ? `${os.totalPracticed} ${s.wordsPracticed.toLowerCase()} · ${os.totalMastered} ${s.wordsMastered.toLowerCase()}${ss.currentStreak > 0 ? ` · ${ss.currentStreak} ${ss.currentStreak === 1 ? s.day : s.days}` : ""}` : s.startPracticingPrompt; })()}
-          </p>
-        </div>
-        <span style={{ color: "#6366f1", fontSize: 14, flexShrink: 0 }}>→</span>
-      </button>
+      {getOverallStats().totalPracticed > 0 && (
+        <button onClick={() => setMode("dashboard")}
+          style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 14, marginBottom: 20, transition: "box-shadow 0.2s" }}
+          onMouseEnter={e => e.currentTarget.style.boxShadow = isDark ? "0 2px 12px rgba(0,0,0,0.2)" : "0 2px 12px rgba(0,0,0,0.08)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: "#6366f118", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>📊</div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.progressDashboard}</p>
+            <p style={{ color: t.textMuted, fontSize: 13 }}>
+              {(() => { const os = getOverallStats(); const ss = getStreakStats(); return `${os.totalPracticed} ${s.wordsPracticed.toLowerCase()} · ${os.totalMastered} ${s.wordsMastered.toLowerCase()}${ss.currentStreak > 0 ? ` · ${ss.currentStreak} ${ss.currentStreak === 1 ? s.day : s.days}` : ""}`; })()}
+            </p>
+          </div>
+          <span style={{ color: "#6366f1", fontSize: 14, flexShrink: 0 }}>→</span>
+        </button>
+      )}
 
-      {/* Voice Speed Control */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-        <SpeedControl speed={speed} setSpeed={setSpeed} t={t} />
-      </div>
-
-      {/* Practice Modes */}
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.practiceModes}</h2>
-      <div style={{ display: "flex", gap: 10, marginBottom: 28, flexWrap: "wrap" }}>
+      {/* Competition Practice */}
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 4 }}>{s.competitionPractice}</h2>
+      <p style={{ fontSize: 13, color: t.textMuted, marginBottom: 10 }}>{s.competitionPracticeDesc}</p>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("listen"); }}
-          style={{ flex: "1 1 100%", padding: "18px 16px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #e67e22, #f39c12)", color: "white", cursor: "pointer", fontSize: 16, fontWeight: 700, boxShadow: "0 4px 16px rgba(230,126,34,0.3)", textAlign: "center" }}>
+          style={{ flex: "1 1 100%", padding: "18px 16px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #e67e22, #f39c12)", color: "white", cursor: "pointer", fontSize: 16, fontWeight: 700, boxShadow: "0 4px 16px rgba(230,126,34,0.3)", textAlign: "center", position: "relative" }}>
           🎧 {s.listenSpellTitle}
           <span style={{ display: "block", fontSize: 12, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>{s.listenSpellDesc}</span>
-        </button>
-        <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("quiz"); }}
-          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>🎯 {s.multipleChoice}</button>
-        <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("spell"); }}
-          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>⌨️ {s.typeWithHints}</button>
-        <button onClick={() => setMode("wordlist")}
-          style={{ flex: "1 1 100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
-          📖 {s.wordListTitle}
-          <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.textMuted, marginTop: 2 }}>{s.wordListDesc(ALL_WORDS.length)}</span>
+          <span style={{ position: "absolute", top: 8, right: 10, background: "rgba(255,255,255,0.25)", color: "white", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8 }}>{s.recommended}</span>
         </button>
         <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("smart-practice"); }}
           style={{ flex: "1 1 100%", padding: "14px 16px", borderRadius: 12, border: "2px solid #10b981", background: isDark ? "#064e3b" : "#ecfdf5", color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
@@ -1903,10 +1994,9 @@ export default function App() {
         </button>
       </div>
 
-      {/* Smart Review (SRS) */}
-      {(() => {
-        const dueCount = getDueCount();
-        return dueCount > 0 ? (
+      {/* Smart Review (SRS) — with contextual hint */}
+      {dueCount > 0 && (
+        <ContextualHint hintKey="smart-review" message={s.hintSmartReview} t={t}>
           <button onClick={() => { setModeKey(k => k + 1); setMode("smart-review"); }}
             style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 12, border: "2px solid #10b981", background: isDark ? "#064e3b" : "#ecfdf5", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 20, transition: "box-shadow 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.boxShadow = "0 2px 12px rgba(16,185,129,0.2)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
@@ -1917,13 +2007,27 @@ export default function App() {
             </div>
             <span style={{ background: "#10b981", color: "white", padding: "4px 10px", borderRadius: 12, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{dueCount}</span>
           </button>
-        ) : null;
-      })()}
+        </ContextualHint>
+      )}
 
-      {/* Favorites Section */}
+      {/* Study & Review */}
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.studyAndReview}</h2>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("quiz"); }}
+          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#3498db", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
+          🎯 {s.multipleChoice}
+          <span style={{ display: "block", fontSize: 11, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>{s.multipleChoiceDesc}</span>
+        </button>
+        <button onClick={() => { setCustomWordPool(null); setModeKey(k => k + 1); setMode("spell"); }}
+          style={{ flex: "1 1 140px", padding: "14px 12px", borderRadius: 12, border: "none", background: "#9b59b6", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
+          ⌨️ {s.typeWithHints}
+          <span style={{ display: "block", fontSize: 11, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>{s.typeWithHintsDesc}</span>
+        </button>
+      </div>
+
+      {/* Favorites Section — with contextual hint */}
       {favWords.length > 0 && (
-        <>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>⭐ {s.favorites}</h2>
+        <ContextualHint hintKey="favorites" message={s.hintFavorites} t={t}>
           <button onClick={() => setMode("study-favorites")}
             style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 12, border: `2px solid #f59e0b`, background: isDark ? "#3d2a14" : "#fffbeb", cursor: "pointer", textAlign: "left", width: "100%", marginBottom: 20, transition: "box-shadow 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.boxShadow = "0 2px 12px rgba(245,158,11,0.2)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
@@ -1934,8 +2038,24 @@ export default function App() {
             </div>
             <span style={{ color: "#f59e0b", fontSize: 13, flexShrink: 0, fontWeight: 600 }}>{s.nWords(favWords.length)}</span>
           </button>
-        </>
+        </ContextualHint>
       )}
+
+      {/* Tools */}
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.tools}</h2>
+      <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+        <button onClick={() => setMode("wordlist")}
+          style={{ flex: "1 1 140px", padding: "14px 16px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
+          📖 {s.wordListTitle}
+          <span style={{ display: "block", fontSize: 12, fontWeight: 400, color: t.textMuted, marginTop: 2 }}>{s.wordListDesc(ALL_WORDS.length)}</span>
+        </button>
+        {getOverallStats().totalPracticed === 0 && (
+          <button onClick={() => setMode("dashboard")}
+            style={{ flex: "1 1 140px", padding: "14px 16px", borderRadius: 12, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 15, fontWeight: 600, textAlign: "center" }}>
+            📊 {s.progressDashboard}
+          </button>
+        )}
+      </div>
 
       {/* Search */}
       <SearchBar value={search} onChange={setSearch} t={t} s={s} />
@@ -1968,48 +2088,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Study by Category */}
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, marginBottom: 10 }}>{s.studyByCategory}</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {filteredCategories.map(([name, data]) => {
-          const words = categoryWords[name] || [];
-          const stats = getCategoryStats(words);
-          return (
-            <div key={name} style={{ borderRadius: 12, border: `1px solid ${t.border}`, background: t.card, overflow: "hidden", transition: "box-shadow 0.2s" }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = isDark ? "0 2px 12px rgba(0,0,0,0.2)" : "0 2px 12px rgba(0,0,0,0.08)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
-              <button onClick={() => { setStudyCategory(name); setMode("study"); }}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                <div style={{ width: 44, height: 44, borderRadius: 10, background: data.color + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>
-                  {data.icon}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.cat[name] || name}</p>
-                  <p style={{ color: t.textMuted, fontSize: 13 }}>{s.catDesc[name] || data.description}</p>
-                  {stats.percent > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                      <div style={{ background: t.border, borderRadius: 4, height: 4, flex: 1, maxWidth: 80 }}>
-                        <div style={{ background: "#10b981", height: 4, borderRadius: 4, width: `${stats.percent}%`, transition: "width 0.5s" }} />
-                      </div>
-                      <span style={{ fontSize: 11, color: "#10b981", fontWeight: 600 }}>{stats.percent}%</span>
-                    </div>
-                  )}
-                </div>
-                <span style={{ color: t.textMuted, fontSize: 13, flexShrink: 0 }}>{s.nWords(words.length)}</span>
-              </button>
-              <div style={{ display: "flex", gap: 6, padding: "0 18px 12px", marginTop: -4 }}>
-                <button onClick={() => startCategoryMode("quiz", name)}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#3498db", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎯 {s.quiz}</button>
-                <button onClick={() => startCategoryMode("spell", name)}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#9b59b6", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>⌨️ {s.spell}</button>
-                <button onClick={() => startCategoryMode("listen", name)}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#e67e22", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🎧 {s.listen}</button>
-                <button onClick={() => { setCustomWordPool(categoryWords[name] || []); setModeKey(k => k + 1); setMode("smart-practice"); }}
-                  style={{ padding: "4px 12px", borderRadius: 14, border: `1px solid #10b981`, background: isDark ? "#064e3b" : "#ecfdf5", color: "#10b981", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🧪 {s.smartPractice}</button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Study by Category — collapsible */}
+      <CategorySection filteredCategories={filteredCategories} categoryWords={categoryWords} getCategoryStats={getCategoryStats}
+        setStudyCategory={setStudyCategory} setMode={setMode} startCategoryMode={startCategoryMode}
+        setCustomWordPool={setCustomWordPool} setModeKey={setModeKey}
+        t={t} isDark={isDark} s={s} />
 
       {/* Support & Ads */}
       <SupportBanner t={t} s={s} />
@@ -2024,6 +2107,62 @@ export default function App() {
         <p style={{ color: t.textMuted, fontSize: 12 }}>{s.footerEvent}</p>
         <p style={{ color: t.textMuted, fontSize: 12 }}>{s.footerLocation}</p>
       </div>
+    </main>
+  );
+}
+
+// ─── Collapsible Category Section ────────────────────────────────────────────
+function CategorySection({ filteredCategories, categoryWords, getCategoryStats, setStudyCategory, setMode, startCategoryMode, setCustomWordPool, setModeKey, t, isDark, s }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <button onClick={() => setExpanded(!expanded)}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "12px 0", background: "none", border: "none", cursor: "pointer" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: t.text, margin: 0 }}>{s.studyByCategory} ({filteredCategories.length})</h2>
+        <span style={{ fontSize: 13, color: t.textMuted, transition: "transform 0.2s", transform: expanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+      </button>
+      {expanded && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+          {filteredCategories.map(([name, data]) => {
+            const words = categoryWords[name] || [];
+            const stats = getCategoryStats(words);
+            return (
+              <div key={name} style={{ borderRadius: 12, border: `1px solid ${t.border}`, background: t.card, overflow: "hidden", transition: "box-shadow 0.2s" }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = isDark ? "0 2px 12px rgba(0,0,0,0.2)" : "0 2px 12px rgba(0,0,0,0.08)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+                <button onClick={() => { setStudyCategory(name); setMode("study"); }}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: data.color + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>
+                    {data.icon}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontWeight: 600, color: t.text, fontSize: 15, marginBottom: 2 }}>{s.cat[name] || name}</p>
+                    <p style={{ color: t.textMuted, fontSize: 13 }}>{s.catDesc[name] || data.description}</p>
+                    {stats.percent > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <div role="progressbar" aria-valuenow={stats.percent} aria-valuemin={0} aria-valuemax={100} style={{ background: t.border, borderRadius: 4, height: 4, flex: 1, maxWidth: 80 }}>
+                          <div style={{ background: "#10b981", height: 4, borderRadius: 4, width: `${stats.percent}%`, transition: "width 0.5s" }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: "#10b981", fontWeight: 600 }}>{stats.percent}%</span>
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ color: t.textMuted, fontSize: 13, flexShrink: 0 }}>{s.nWords(words.length)}</span>
+                </button>
+                <div style={{ display: "flex", gap: 6, padding: "0 18px 12px", marginTop: -4, flexWrap: "wrap" }}>
+                  <button onClick={() => startCategoryMode("quiz", name)}
+                    style={{ padding: "6px 14px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#3498db", cursor: "pointer", fontSize: 12, fontWeight: 600, minHeight: 32 }}>🎯 {s.quiz}</button>
+                  <button onClick={() => startCategoryMode("spell", name)}
+                    style={{ padding: "6px 14px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#9b59b6", cursor: "pointer", fontSize: 12, fontWeight: 600, minHeight: 32 }}>⌨️ {s.spell}</button>
+                  <button onClick={() => startCategoryMode("listen", name)}
+                    style={{ padding: "6px 14px", borderRadius: 14, border: `1px solid ${t.border}`, background: t.surface, color: "#e67e22", cursor: "pointer", fontSize: 12, fontWeight: 600, minHeight: 32 }}>🎧 {s.listen}</button>
+                  <button onClick={() => { setCustomWordPool(categoryWords[name] || []); setModeKey(k => k + 1); setMode("smart-practice"); }}
+                    style={{ padding: "6px 14px", borderRadius: 14, border: `1px solid #10b981`, background: isDark ? "#064e3b" : "#ecfdf5", color: "#10b981", cursor: "pointer", fontSize: 12, fontWeight: 600, minHeight: 32 }}>🧪 {s.smartPractice}</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

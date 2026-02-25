@@ -1,0 +1,47 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Redirect espellnol.com (ASCII) → espellñol.com (IDN primary)
+[[redirects]]
+  from = "https://espellnol.com/*"
+  to = "https://xn--espellol-i3a.com/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.espellnol.com/*"
+  to = "https://xn--espellol-i3a.com/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.xn--espellol-i3a.com/*"
+  to = "https://xn--espellol-i3a.com/:splat"
+  status = 301
+  force = true
+
+# SPA fallback — serve index.html for all routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/audio/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

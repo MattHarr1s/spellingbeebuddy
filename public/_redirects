@@ -1,0 +1,7 @@
+# Redirect ASCII domain to IDN primary domain
+https://espellnol.com/* https://xn--espellol-i3a.com/:splat 301!
+https://www.espellnol.com/* https://xn--espellol-i3a.com/:splat 301!
+https://www.xn--espellol-i3a.com/* https://xn--espellol-i3a.com/:splat 301!
+
+# SPA fallback
+/* /index.html 200
