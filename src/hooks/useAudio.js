@@ -162,6 +162,36 @@ export function useAudio() {
     }
   }, [voiceId, speakWeb]);
 
+  // Speak a context sentence using pre-generated audio, keyed by word
+  const speakSentence = useCallback((wordKey, rateOverride) => {
+    // Stop any current playback
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+
+    const word = wordKey.toLowerCase();
+    const rate = rateOverride !== undefined ? rateOverride : 0.8;
+
+    if (WORD_SET.has(word)) {
+      const effectiveVoice = voiceId === "random" ? pickRandomVoice() : voiceId;
+      const audio = getOrCreateAudio(effectiveVoice, word, "sentence");
+
+      audio.playbackRate = rate;
+      audio.currentTime = 0;
+      currentAudioRef.current = audio;
+
+      audio.play().catch(() => {
+        currentAudioRef.current = null;
+        speakWeb(wordKey, rate);
+      });
+    } else {
+      speakWeb(wordKey, rate);
+    }
+  }, [voiceId, speakWeb]);
+
   // Prefetch upcoming words into the audio cache
   const prefetch = useCallback((wordArray) => {
     if (!wordArray || !wordArray.length) return;
@@ -185,6 +215,7 @@ export function useAudio() {
   return {
     speak,
     speakDef,
+    speakSentence,
     ready,
     voiceId,
     setVoiceId,

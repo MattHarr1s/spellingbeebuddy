@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ALL_WORDS } from "./data/words.js";
+import { SENTENCES } from "./data/sentences.js";
 import { useProgress } from "./hooks/useProgress.js";
 import { useFavorites } from "./hooks/useFavorites.js";
 import { useDarkMode, DARK_THEME, LIGHT_THEME } from "./hooks/useDarkMode.js";
@@ -946,7 +947,7 @@ function SpellMode({ onBack, speed, setSpeed, speak, t, isDark, toggleDark, reco
 }
 
 // ─── Listen Mode (Competition Style) ────────────────────────────────────────
-function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
+function ListenMode({ onBack, speed, setSpeed, speak, speakDef, speakSentence, ready, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, wordPool, s, locale, toggleLocale, voiceId, setVoiceId, prefetch }) {
   const pool = wordPool || ALL_WORDS;
   const ROUND_SIZE = Math.min(15, pool.length);
   const [words] = useState(() => shuffleArray(pool).slice(0, ROUND_SIZE));
@@ -956,8 +957,8 @@ function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
   const [showDef, setShowDef] = useState(false);
+  const [showSentence, setShowSentence] = useState(false);
   const [hasListened, setHasListened] = useState(false);
-  const [defLang, setDefLang] = useState("en");
   const [missed, setMissed] = useState([]);
   const inputRef = useRef(null);
   const voice = useVoiceSpelling();
@@ -978,8 +979,8 @@ function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark
 
   const handleListen = () => { speak(word.word, speed); setHasListened(true); setTimeout(() => inputRef.current?.focus(), 100); };
   const handleListenSlow = () => { speak(word.word, Math.max(0.3, speed * 0.5)); setHasListened(true); };
-  const handleDefinition = () => { setShowDef(true); speakDef(word.word, defLang, speed); };
-  const handleSentence = () => { speakDef(word.word, defLang, speed); };
+  const handleDefinition = () => { setShowDef(true); speakDef(word.word, locale, speed); };
+  const handleSentence = () => { setShowSentence(true); speakSentence(word.word, speed); };
 
   const checkAnswer = useCallback(() => {
     if (!input.trim()) return;
@@ -997,7 +998,7 @@ function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark
 
   const nextWord = () => {
     if (currentIndex + 1 >= ROUND_SIZE) { setFinished(true); }
-    else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); setShowDef(false); setHasListened(false); voice.stop(); }
+    else { setCurrentIndex(currentIndex + 1); setInput(""); setResult(null); setShowDef(false); setShowSentence(false); setHasListened(false); voice.stop(); }
   };
 
   if (finished) {
@@ -1010,7 +1011,7 @@ function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark
           {pct >= 90 ? (s ? s.championEar : "¡Campeón/a! You nailed it by ear alone!") : pct >= 70 ? (s ? s.strongListening : "¡Muy bien! Strong listening skills!") : pct >= 50 ? (s ? s.goodEffort : "Good effort — the tricky ones take practice.") : (s ? s.toughMode : "This mode is tough! Review the categories and try again.")}
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <button onClick={() => { setFinished(false); setCurrentIndex(0); setScore(0); setResult(null); setInput(""); setShowDef(false); setHasListened(false); setMissed([]); }}
+          <button onClick={() => { setFinished(false); setCurrentIndex(0); setScore(0); setResult(null); setInput(""); setShowDef(false); setShowSentence(false); setHasListened(false); setMissed([]); }}
             style={{ padding: "12px 24px", borderRadius: 10, border: "none", background: "#e67e22", color: "white", cursor: "pointer", fontSize: 15, fontWeight: 600 }}>{s ? s.tryAgain : "Try Again"}</button>
           {missed.length > 0 && (
             <button onClick={() => { onBack("listen-missed", missed); }}
@@ -1050,17 +1051,18 @@ function ListenMode({ onBack, speed, setSpeed, speak, speakDef, ready, t, isDark
           <button onClick={handleDefinition} style={{ padding: "7px 6px", borderRadius: 20, border: `1px solid ${t.border}`, background: showDef ? (isDark ? "#1e3a5f" : "#f0f9ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>📖 {s ? s.def : "Def"}</button>
         </div>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <button onClick={handleSentence} style={{ padding: "7px 14px", borderRadius: 20, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>💬 {s ? s.useInContext : "Use in context"}</button>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 12 }}>
-          <button onClick={() => setDefLang("en")} style={{ padding: "2px 8px", borderRadius: 10, border: defLang === "en" ? "2px solid #3498db" : `1px solid ${t.border}`, background: defLang === "en" ? (isDark ? "#1e3a5f" : "#eff6ff") : t.surface, color: t.text, fontSize: 11, cursor: "pointer" }}>EN</button>
-          <button onClick={() => setDefLang("es")} style={{ padding: "2px 8px", borderRadius: 10, border: defLang === "es" ? "2px solid #e67e22" : `1px solid ${t.border}`, background: defLang === "es" ? (isDark ? "#3d2a14" : "#fff7ed") : t.surface, color: t.text, fontSize: 11, cursor: "pointer" }}>ES</button>
+          <button onClick={handleSentence} style={{ padding: "7px 14px", borderRadius: 20, border: `1px solid ${t.border}`, background: showSentence ? (isDark ? "#2d1f3d" : "#faf5ff") : t.surface, color: t.text, cursor: "pointer", fontSize: 12 }}>💬 {s ? s.useInContext : "Use in context"}</button>
         </div>
 
         {showDef && !result && (
           <p style={{ fontSize: 15, color: t.text, fontStyle: "italic", marginBottom: 12, background: isDark ? "#1e3a5f" : "#f0f9ff", padding: "8px 14px", borderRadius: 8 }}>
-            {defLang === "es" ? (word.es || word.en) : word.en}
+            {locale === "es" ? (word.es || word.en) : word.en}
+          </p>
+        )}
+
+        {showSentence && !result && SENTENCES[word.word.toLowerCase()] && (
+          <p style={{ fontSize: 14, color: t.text, fontStyle: "italic", marginBottom: 12, background: isDark ? "#2d1f3d" : "#faf5ff", padding: "8px 14px", borderRadius: 8 }}>
+            {SENTENCES[word.word.toLowerCase()]}
           </p>
         )}
 
@@ -1812,7 +1814,7 @@ export default function App() {
     try { return parseFloat(localStorage.getItem("sbb_speed")) || 0.8; } catch { return 0.8; }
   });
   const [search, setSearch] = useState("");
-  const { speak, speakDef, ready, voiceId, setVoiceId, prefetch } = useAudio();
+  const { speak, speakDef, speakSentence, ready, voiceId, setVoiceId, prefetch } = useAudio();
   const { isDark, toggleDark } = useDarkMode();
   const { locale, toggleLocale, s } = useLocale();
   const { progress, recordResult, getWordStats, getCategoryStats, getMasteredCount, getOverallStats, getStreakStats, getRecentWords, getWordsForReview, getDueCount, getSrsStats, resetProgress } = useProgress();
@@ -1872,7 +1874,7 @@ export default function App() {
     setMode(modeName);
   };
 
-  const sharedProps = { speed, setSpeed, speak, speakDef, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, voiceId, setVoiceId, prefetch };
+  const sharedProps = { speed, setSpeed, speak, speakDef, speakSentence, t, isDark, toggleDark, recordResult, isFavorite, toggleFavorite, s, locale, toggleLocale, voiceId, setVoiceId, prefetch };
 
   const wrapper = (children) => (
     <div style={{ minHeight: "100vh", background: t.bg, padding: "24px 16px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", transition: "background 0.3s" }}>
